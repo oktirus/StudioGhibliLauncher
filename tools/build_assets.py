@@ -728,8 +728,10 @@ def main() -> None:
         ORIGINALS_DIR / "effect-kodama.jpg",
     )
 
-    # 4. Cohesive Ghibli crest, archive & 19 TV app medallions
+    # 4. Cohesive Ghibli crest + 20 hand-painted Ghibli app/archive icons
     build_branding_and_icons()
+    icon_manifest_items = extract_generated_icon_sheets()
+    manifest_items.extend(icon_manifest_items)
 
     # 5. Original synthesized Ghibli-mood pentatonic audio
     build_audio_assets()
@@ -742,7 +744,6 @@ def main() -> None:
         "app/src/main/assets/game/game-kodama-motion.webp",
         "app/src/main/assets/game/game-kodama-slide.webp",
         "app/src/main/assets/branding/ghibli-crest.webp",
-        "app/src/main/assets/icons/icon-archive.webp",
     ]:
         p = ROOT / rel
         im = Image.open(p)
@@ -764,16 +765,207 @@ def main() -> None:
         "generated_note": (
             "All 8 wallpapers and 4 spirit sprites (soot-idle, soot-jump, calcifer, kodama) "
             "were generated via gemini-3.1-flash-image and visually verified. "
-            "Cohesive medallion icons, botanical crest, procedural Canvas spirits "
-            "(wind_petal, aetherium, paper_birds), and original pentatonic WAV audio "
-            "were produced cleanly via Python/Pillow & native Canvas."
+            "All 20 hand-painted Ghibli wooden-and-brass medallion icons (19 TV apps + All Apps archive) "
+            "were generated as 5 style-locked 2x2 sheets via Gemini Web (work-with-argon / Orca CLI pipeline), "
+            "audited by BFS component count, flood-fill alpha-extracted with white-halo defringing, and visually verified. "
+            "Procedural Canvas spirits (wind_petal, aetherium, paper_birds) and original pentatonic WAV audio "
+            "are rendered natively / synthesized cleanly."
         ),
         "assets": manifest_items,
     }
     (DOCS_DIR / "asset-manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    print(f"Built {len(manifest_items)} tracked visual assets + 19 app icons + original Ghibli audio.")
+    print(f"Built {len(manifest_items)} tracked visual assets (incl. {len(icon_manifest_items)} hand-painted icons) + original Ghibli audio.")
+
+
+ICON_SHEETS_MAP = [
+    ("sheet_01.png", ["lampa", "kodi", "youtube", "smarttube"]),
+    ("sheet_02.png", ["uakino", "megogo", "netflix", "archive"]),
+    ("sheet_03.png", ["spotify", "crunchyroll", "vlc", "plex"]),
+    ("sheet_04.png", ["disneyplus", "primevideo", "jellyfin", "kyivstar"]),
+    ("sheet_05.png", ["sweettv", "tvbro", "sendfiles", "xplore"]),
+]
+
+
+def _flood_remove_white_with_defringe(img: Image.Image) -> tuple[Image.Image, bytearray]:
+    """Flood-fill remove solid white background from borders + defringe 2px edge halo."""
+    rgb = img.convert("RGB")
+    w, h = rgb.size
+    px = list(rgb.getdata())
+    bg = bytearray(w * h)
+    q = collections.deque()
+
+    def is_white_bg(r: int, g: int, b: int) -> bool:
+        return min(r, g, b) >= 232 and (max(r, g, b) - min(r, g, b)) <= 22
+
+    for x in range(w):
+        for y in (0, h - 1):
+            idx = y * w + x
+            if not bg[idx] and is_white_bg(*px[idx]):
+                bg[idx] = 1
+                q.append((x, y))
+    for y in range(h):
+        for x in (0, w - 1):
+            idx = y * w + x
+            if not bg[idx] and is_white_bg(*px[idx]):
+                bg[idx] = 1
+                q.append((x, y))
+
+    while q:
+        cx, cy = q.popleft()
+        for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+            if 0 <= nx < w and 0 <= ny < h:
+                nidx = ny * w + nx
+                if not bg[nidx] and is_white_bg(*px[nidx]):
+                    bg[nidx] = 1
+                    q.append((nx, ny))
+
+    # Build RGBA pixels with soft edge anti-aliasing & white un-premultiplication
+    out = [(0, 0, 0, 0)] * (w * h)
+    # Identify 1-2px border band adjacent to background
+    dist = bytearray(w * h)
+    border_q = collections.deque()
+    for y in range(h):
+        row_off = y * w
+        for x in range(w):
+            idx = row_off + x
+            if bg[idx]:
+                continue
+            touches_bg = False
+            for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                if 0 <= nx < w and 0 <= ny < h and bg[ny * w + nx]:
+                    touches_bg = True
+                    break
+            if touches_bg:
+                dist[idx] = 1
+                border_q.append((x, y))
+
+    while border_q:
+        cx, cy = border_q.popleft()
+        cd = dist[cy * w + cx]
+        if cd >= 2:
+            continue
+        for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+            if 0 <= nx < w and 0 <= ny < h:
+                nidx = ny * w + nx
+                if not bg[nidx] and dist[nidx] == 0:
+                    dist[nidx] = cd + 1
+                    border_q.append((nx, ny))
+
+    for idx in range(w * h):
+        if bg[idx]:
+            out[idx] = (0, 0, 0, 0)
+            continue
+        r, g, b = px[idx]
+        d = dist[idx]
+        if d > 0:
+            lum = 0.299 * r + 0.587 * g + 0.114 * b
+            if lum > 155:
+                # Semi-transparent white-blended anti-aliased edge against dark sepia outline (~48, 36, 26)
+                t = max(0.0, min(1.0, (242.0 - lum) / (242.0 - 155.0)))
+                a = int(round(t * 255))
+                if a <= 8:
+                    out[idx] = (0, 0, 0, 0)
+                    bg[idx] = 1
+                else:
+                    # Un-premultiply white halo toward dark outline tone
+                    alpha_f = a / 255.0
+                    ur = max(0, min(255, int(round((r - 255.0 * (1.0 - alpha_f)) / alpha_f))))
+                    ug = max(0, min(255, int(round((g - 255.0 * (1.0 - alpha_f)) / alpha_f))))
+                    ub = max(0, min(255, int(round((b - 255.0 * (1.0 - alpha_f)) / alpha_f))))
+                    out[idx] = (ur, ug, ub, a)
+                continue
+        out[idx] = (r, g, b, 255)
+
+    rgba = Image.new("RGBA", (w, h))
+    rgba.putdata(out)
+    return rgba, bg
+
+
+def extract_generated_icon_sheets() -> list[dict]:
+    """Segment the 5 Gemini-generated 2x2 Ghibli icon sheets into 20 256x256 RGBA WebP icons."""
+    sheets_dir = ORIGINALS_DIR / "icon_sheets"
+    icons_dir = ASSETS_DIR / "icons"
+    icons_dir.mkdir(parents=True, exist_ok=True)
+    items: list[dict] = []
+
+    for sheet_name, icon_kinds in ICON_SHEETS_MAP:
+        sheet_path = sheets_dir / sheet_name
+        if not sheet_path.exists():
+            raise FileNotFoundError(f"Missing generated icon sheet: {sheet_path}")
+
+        raw_img = Image.open(sheet_path)
+        rgba, bg = _flood_remove_white_with_defringe(raw_img)
+        w, h = rgba.size
+
+        # BFS connected components on foreground mask
+        fg_vis = bytearray(w * h)
+        comps = []
+        for y in range(h):
+            row_off = y * w
+            for x in range(w):
+                idx = row_off + x
+                if not bg[idx] and not fg_vis[idx]:
+                    q = collections.deque([(x, y)])
+                    fg_vis[idx] = 1
+                    cnt = 1
+                    minx = maxx = x
+                    miny = maxy = y
+                    while q:
+                        cx, cy = q.popleft()
+                        for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+                            if 0 <= nx < w and 0 <= ny < h:
+                                nidx = ny * w + nx
+                                if not bg[nidx] and not fg_vis[nidx]:
+                                    fg_vis[nidx] = 1
+                                    cnt += 1
+                                    if nx < minx: minx = nx
+                                    if nx > maxx: maxx = nx
+                                    if ny < miny: miny = ny
+                                    if ny > maxy: maxy = ny
+                                    q.append((nx, ny))
+                    if cnt > 2000:
+                        comps.append((minx, miny, maxx, maxy))
+
+        if len(comps) != 4:
+            raise RuntimeError(f"{sheet_name}: expected 4 icon components, found {len(comps)}")
+
+        # Sort strictly into 2x2 order: top-left, top-right, bottom-left, bottom-right
+        comps.sort(key=lambda b: (0 if (b[1] + b[3]) // 2 < h // 2 else 1, (b[0] + b[2]) // 2))
+
+        for kind, (minx, miny, maxx, maxy) in zip(icon_kinds, comps):
+            crop = rgba.crop((minx, miny, maxx + 1, maxy + 1))
+            cw, ch = crop.size
+            target = 256
+            inner = 236
+            scale = min(inner / cw, inner / ch)
+            nw = max(1, int(round(cw * scale)))
+            nh = max(1, int(round(ch * scale)))
+            resized = crop.resize((nw, nh), Image.Resampling.LANCZOS)
+            canvas = Image.new("RGBA", (target, target), (0, 0, 0, 0))
+            ox = (target - nw) // 2
+            oy = (target - nh) // 2
+            canvas.paste(resized, (ox, oy), resized)
+
+            out_path = icons_dir / f"icon-{kind}.webp"
+            canvas.save(out_path, "WEBP", quality=92, method=6)
+            items.append(
+                {
+                    "id": f"icon_{kind}",
+                    "kind": "menu_icon" if kind == "archive" else "app_icon",
+                    "appMapping": "archive (All Apps)" if kind == "archive" else kind,
+                    "source": "Gemini Web via Orca CLI (work-with-argon 2x2 sheet + flood-fill alpha)",
+                    "originalPath": f"art/originals/icon_sheets/{sheet_name}",
+                    "runtimePath": f"app/src/main/assets/icons/icon-{kind}.webp",
+                    "width": target,
+                    "height": target,
+                    "alpha": True,
+                    "sha256": sha256_file(out_path),
+                    "status": "approved",
+                }
+            )
+    return items
 
 
 if __name__ == "__main__":
