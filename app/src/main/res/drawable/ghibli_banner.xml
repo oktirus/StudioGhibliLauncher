@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <!-- Deep forest twilight background -->
+    <path
+        android:fillColor="#162820"
+        android:pathData="M0,0h320v180h-320z" />
+    <!-- Rolling Ghibli meadow silhouettes -->
+    <path
+        android:fillColor="#223B2E"
+        android:pathData="M0,125 Q95,92 185,118 T320,104 L320,180 L0,180 Z" />
+    <path
+        android:fillColor="#2D4C3A"
+        android:pathData="M0,148 Q120,122 230,142 T320,130 L320,180 L0,180 Z" />
+    <!-- Sunlit parchment medallion on left -->
+    <path
+        android:fillColor="#1E352A"
+        android:strokeColor="#E8B858"
+        android:strokeWidth="3.5"
+        android:pathData="M72,44 A46,46 0 1,1 71.99,44 Z" />
+    <!-- Camphor leaf inside medallion -->
+    <path
+        android:fillColor="#94C684"
+        android:pathData="M72,58 C86,70 91,86 85,101 C80,108 76,110 72,110 C68,110 64,108 59,101 C53,86 58,70 72,58 Z" />
+    <path
+        android:strokeColor="#162820"
+        android:strokeWidth="2.6"
+        android:strokeLineCap="round"
+        android:pathData="M72,66 L72,116 M72,82 L80,75 M72,92 L64,85" />
+    <!-- Decorative floating wind ribbons & lantern stars on right -->
+    <path
+        android:strokeColor="#F6EED8"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:pathData="M148,74 Q192,58 238,72 T292,64" />
+    <path
+        android:strokeColor="#E8B858"
+        android:strokeWidth="2.0"
+        android:strokeLineCap="round"
+        android:pathData="M156,98 Q208,84 260,96 T298,88" />
+    <path
+        android:fillColor="#E8B858"
+        android:pathData="M152,116 A4,4 0 1,1 151.99,116 Z" />
+    <path
+        android:fillColor="#F6EED8"
+        android:pathData="M242,48 A3.5,3.5 0 1,1 241.99,48 Z" />
+    <path
+        android:fillColor="#D96B4B"
+        android:pathData="M276,112 A4,4 0 1,1 275.99,112 Z" />
+</vector>

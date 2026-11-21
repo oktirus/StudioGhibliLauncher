@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item type="id" name="runner_jump" />
+    <item type="id" name="runner_slide" />
+    <item type="id" name="runner_pause" />
+    <item type="id" name="runner_exit" />
+    <item type="id" name="runner_hero" />
+    <item type="id" name="order_up" />
+    <item type="id" name="order_down" />
+    <item type="id" name="order_remove" />
+    <item type="id" name="tv_key_cancel_press" />
+</resources>
