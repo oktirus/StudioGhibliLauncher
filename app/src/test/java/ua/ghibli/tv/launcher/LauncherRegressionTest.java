@@ -80,11 +80,99 @@ public class LauncherRegressionTest {
         assertTrue(field(activity, "activePanel") instanceof SettingsPanel);
     }
 
+    @Test public void aboutGroupsUpdatesAndResourcesAndBackRestoresFocus() throws Exception {
+        MainActivity activity = start();
+        call(activity, "openSettings");
+        layout(activity);
+        SettingsPanel panel = field(activity, "settingsPanel");
+        View about = (View) findText(panel, "Про Ghibli та ресурси").getParent();
+        assertTrue(about.performClick());
+        layout(activity);
+        assertNotNull(findText(panel, "Оновлення Ghibli"));
+        View label = findText(panel, "Показувати CPU та RAM");
+        GhibliSwitch toggle = findView((View) label.getParent().getParent(), GhibliSwitch.class);
+        PreferencesManager prefs = field(activity, "prefs");
+        View monitor = field(field(activity, "resources"), "label");
+        assertEquals(View.GONE, monitor.getVisibility());
+        toggle.performClick();
+        assertTrue(prefs.shouldShowResources());
+        assertEquals(View.VISIBLE, monitor.getVisibility());
+        toggle.performClick();
+        assertFalse(prefs.shouldShowResources());
+        assertEquals(View.GONE, monitor.getVisibility());
+        activity.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK));
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16));
+        assertSame(about, focused(activity));
+        assertSame(panel, field(activity, "activePanel"));
+    }
+
+    @Test public void remoteReachesAndTogglesResourcesBetweenTheAboutActions() throws Exception {
+        MainActivity activity = start();
+        call(activity, "openSettings");
+        SettingsPanel panel = field(activity, "settingsPanel");
+        ((View) findText(panel, "Про Ghibli та ресурси").getParent()).performClick();
+        layout(activity);
+        View update = (View) findText(panel, "Оновлення Ghibli").getParent();
+        View label = findText(panel, "Показувати CPU та RAM");
+        GhibliSwitch toggle = findView((View) label.getParent().getParent(), GhibliSwitch.class);
+        View about = (View) findText(panel, "Про застосунок").getParent();
+        assertTrue(update.requestFocusFromTouch());
+        assertSame(toggle, update.focusSearch(View.FOCUS_DOWN));
+        assertTrue(toggle.requestFocus());
+        activity.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER));
+        activity.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER));
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertTrue(((PreferencesManager) field(activity, "prefs")).shouldShowResources());
+        assertSame(about, toggle.focusSearch(View.FOCUS_DOWN));
+        assertSame(toggle, about.focusSearch(View.FOCUS_UP));
+    }
+
+    @Test public void quietMomentDoesNotPlayTheUiOrFocusCue() throws Exception {
+        MainActivity activity = start();
+        AudioController original = field(activity, "audioController");
+        RecordingAudio audio = new RecordingAudio(activity, field(activity, "prefs"));
+        org.robolectric.util.ReflectionHelpers.setField(activity, "audioController", audio);
+        original.release();
+        call(activity, "openSettings");
+        SettingsPanel panel = field(activity, "settingsPanel");
+        View quiet = (View) findText(panel, "Тиха мить").getParent();
+        audio.uiSounds = 0;
+        assertTrue(quiet.performClick());
+        assertEquals(View.VISIBLE, ((View) field(activity, "ambientOverlay")).getVisibility());
+        assertEquals(0, audio.uiSounds);
+        assertEquals(0, audio.focusSounds);
+        assertFalse(quiet.isSoundEffectsEnabled());
+    }
+
     @Test public void homeIntentClosesCurrentPanel() throws Exception {
         MainActivity activity = start();
         call(activity, "openGame");
         controller.newIntent(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME));
         assertNull("Home leaves the game", field(activity, "activePanel"));
+    }
+
+    @Test public void homeRestoresFocusSilentlyUntilDirectionalNavigation() throws Exception {
+        MainActivity activity = start();
+        DockView dock = field(activity, "dockView");
+        ViewGroup cards = (ViewGroup) dock.getFirstCard().getParent();
+        assertTrue(cards.getChildCount() > 2);
+        assertTrue(cards.getChildAt(1).requestFocusFromTouch());
+        controller.pause();
+        AudioController original = field(activity, "audioController");
+        RecordingAudio audio = new RecordingAudio(activity, field(activity, "prefs"));
+        org.robolectric.util.ReflectionHelpers.setField(activity, "audioController", audio);
+        original.release();
+
+        controller.newIntent(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME));
+        controller.resume();
+        drain((ExecutorService) field(field(activity, "appManager"), "executor"));
+        layout(activity);
+        assertSame(dock.getFirstCard(), focused(activity));
+        assertEquals("System HOME, layout and resume are silent", 0, audio.focusSounds);
+
+        assertTrue(activity.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT)));
+        assertSame(cards.getChildAt(1), focused(activity));
+        assertEquals("One sound for one actual move", 1, audio.focusSounds);
     }
 
     @Test public void runnerPlaysEachGameplayCueOnceAndStopsOnExit() throws Exception {
@@ -357,6 +445,20 @@ public class LauncherRegressionTest {
         assertEquals("running", physics.status);
     }
 
+    @Test public void runnerPlaysItsOwnCuesAndStopsThemWhenPaused() throws Exception {
+        MainActivity activity = start();
+        call(activity, "openGame");
+        ValleyRunnerView game = field(activity, "runnerGameView");
+        List<RunnerCue> cues = new ArrayList<>();
+        java.util.concurrent.atomic.AtomicInteger stops = new java.util.concurrent.atomic.AtomicInteger();
+        game.setSoundCallbacks(cues::add, stops::incrementAndGet);
+        game.startGame();
+        game.jump();
+        game.pauseGame();
+        assertEquals(List.of(RunnerCue.START, RunnerCue.JUMP), cues);
+        assertEquals(1, stops.get());
+    }
+
     @Test public void audioToggleAndSpiritPreviewWork() throws Exception {
         MainActivity activity = start();
         PreferencesManager prefs = field(activity, "prefs");
@@ -365,8 +467,8 @@ public class LauncherRegressionTest {
         RecordingAudio audio = new RecordingAudio(activity, prefs);
         try {
             SettingsPanel panel = new SettingsPanel(activity, prefs, audio);
-            LinearLayout content = field(panel, "content");
-            GhibliSwitch toggle = (GhibliSwitch) ((ViewGroup) content.getChildAt(3)).getChildAt(1);
+            openAudioSettings(panel);
+            GhibliSwitch toggle = field(panel, "audioSwitch");
             audio.musicUpdates = 0;
             toggle.performClick();
             assertTrue(prefs.isAudioEnabled());
@@ -377,9 +479,36 @@ public class LauncherRegressionTest {
             findText(panel, "Перевірити духа:").performClick();
             assertTrue(prefs.isAudioEnabled());
             assertEquals("calcifer", audio.previewTechnique);
-            GhibliSwitch sw = field(panel, "audioSwitch");
-            assertTrue(sw.isChecked());
+            assertTrue(toggle.isChecked());
         } finally { audio.release(); }
+    }
+
+    private static void openAudioSettings(SettingsPanel panel) {
+        assertTrue(((View) findText(panel, "Звук і музика").getParent()).performClick());
+    }
+
+    @Test public void audioMenuCountsDownToTheNextTrackAboveBothPreviewButtons() throws Exception {
+        MainActivity activity = start();
+        PreferencesManager prefs = field(activity, "prefs");
+        prefs.setMusicRotationEnabled(true);
+        AudioController original = field(activity, "audioController");
+        RecordingAudio audio = new RecordingAudio(activity, prefs);
+        audio.remainingMusicMillis = 26500;
+        org.robolectric.util.ReflectionHelpers.setField(activity, "audioController", audio);
+        original.release();
+
+        call(activity, "openSettings");
+        SettingsPanel panel = field(activity, "settingsPanel");
+        openAudioSettings(panel);
+        layout(activity);
+        assertNotNull(findText(panel, "Наступний трек через 0:27"));
+        audio.remainingMusicMillis = 23900;
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500));
+        assertNotNull(findText(panel, "Наступний трек через 0:24"));
+        LinearLayout rows = field(panel, "content");
+        int count = rows.getChildCount();
+        assertSame(findText(panel, "Прослухати звук виділення"), rows.getChildAt(count - 2));
+        assertSame(findText(panel, "Перевірити духа:"), rows.getChildAt(count - 1));
     }
 
     @Test public void libraryFocusTargetsSpiritAuraAndPausesCleanly() throws Exception {
@@ -488,14 +617,17 @@ public class LauncherRegressionTest {
     private static class RecordingAudio extends AudioController {
         int musicUpdates;
         int focusSounds;
+        int uiSounds;
+        long remainingMusicMillis = -1L;
         int runnerPreparations;
         int runnerStops;
         final List<RunnerCue> runnerSounds = new ArrayList<>();
         String previewTechnique;
         RecordingAudio(Context context, PreferencesManager prefs) { super(context, prefs); }
         @Override public synchronized void updateMusic() { musicUpdates++; }
-        @Override public synchronized void playUiSound() {}
+        @Override public synchronized void playUiSound() { uiSounds++; }
         @Override public synchronized void playFocusSound() { focusSounds++; }
+        @Override public synchronized long millisecondsUntilNextTrack() { return remainingMusicMillis; }
         @Override public synchronized void prepareRunnerSounds() { runnerPreparations++; }
         @Override public synchronized void playRunnerSound(RunnerCue cue) { runnerSounds.add(cue); }
         @Override public synchronized void stopRunnerSounds() { runnerStops++; }

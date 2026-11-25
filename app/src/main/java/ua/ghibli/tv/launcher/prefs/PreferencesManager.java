@@ -25,6 +25,8 @@ public class PreferencesManager {
     public static final String KEY_VOLUME = "volume";
     public static final String KEY_MUSIC_VOLUME = "musicVolume";
     public static final String KEY_MUSIC = "music";
+    public static final String KEY_MUSIC_ROTATION = "musicRotation";
+    public static final String KEY_SHOW_RESOURCES = "showResources";
     public static final String KEY_TECHNIQUE = "technique";
     public static final String KEY_HIGHLIGHT_SOUND = "highlightSound";
     public static final String KEY_MOTION = "motion";
@@ -108,6 +110,22 @@ public class PreferencesManager {
 
     public void setMusicTrack(String trackId) {
         prefs.edit().putString(KEY_MUSIC, trackId).apply();
+    }
+
+    public boolean isMusicRotationEnabled() {
+        return prefs.getBoolean(KEY_MUSIC_ROTATION, false);
+    }
+
+    public void setMusicRotationEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_MUSIC_ROTATION, enabled).apply();
+    }
+
+    public boolean shouldShowResources() {
+        return prefs.getBoolean(KEY_SHOW_RESOURCES, false);
+    }
+
+    public void setShowResources(boolean show) {
+        prefs.edit().putBoolean(KEY_SHOW_RESOURCES, show).apply();
     }
 
     public String getTechnique() {

@@ -146,7 +146,10 @@ public class HomeScreenSetupTest {
         AudioController audio = new AudioController(activity, prefs);
         try {
             SettingsPanel panel = new SettingsPanel(activity, prefs, audio);
-            View row = findText(panel, "Домашній екран");
+            View group = findText(panel, "Домашній екран");
+            assertNotNull(group);
+            ((View) group.getParent()).performClick();
+            View row = findText(panel, "Основний лаунчер");
             assertNotNull(row);
             panel.setHomeScreenActive(true);
             assertNotNull(findText(panel, "Ghibli · вибрано"));
@@ -156,6 +159,7 @@ public class HomeScreenSetupTest {
                 public void onHomeScreenRequested() { setup.openSelection(); }
                 public void onHomeRedirectRequested() { setup.showRedirectSettings(); }
                 public void onUpdatesRequested() {}
+                public void onResourcesChanged() {}
                 public void onSpiritsRequested() {}
                 public void onAmbientRequested() {}
                 public void onSystemSettingsRequested(String target) {}

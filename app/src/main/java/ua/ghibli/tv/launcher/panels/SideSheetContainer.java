@@ -156,6 +156,10 @@ public class SideSheetContainer extends FrameLayout {
         }
     }
 
+    public void setTitle(String title) {
+        titleView.setText(title);
+    }
+
     public View getCloseButton() {
         return closeButton;
     }

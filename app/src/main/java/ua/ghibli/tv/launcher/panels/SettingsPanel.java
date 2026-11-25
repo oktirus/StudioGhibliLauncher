@@ -32,10 +32,11 @@ import ua.ghibli.tv.launcher.views.GhibliSwitch;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Studio Ghibli Settings panel ("Налаштування").
- * Warm cedar right side sheet with honey-gold switches, sliders, dropdowns, and TV navigation.
+ * Warm cedar right side sheet grouped into 5 TV-friendly submenus with honey-gold controls.
  */
 public class SettingsPanel extends FrameLayout {
     public interface OnSettingsActionListener {
@@ -47,6 +48,7 @@ public class SettingsPanel extends FrameLayout {
         void onUpdatesRequested();
         void onRefreshAppsRequested();
         void onAboutRequested();
+        void onResourcesChanged();
         void onCloseRequested();
     }
 
@@ -54,7 +56,9 @@ public class SettingsPanel extends FrameLayout {
     private final AudioController audioController;
     private final SideSheetContainer sheetContainer;
     private final ScrollView scrollView;
-    private final LinearLayout content;
+    private final LinearLayout mainMenu;
+    private LinearLayout content;
+    private View openedGroup;
 
     private TextView spiritValueText;
     private Button spiritPreviewButton;
@@ -63,10 +67,14 @@ public class SettingsPanel extends FrameLayout {
     private GhibliSwitch motionSwitch;
     private GhibliSwitch audioSwitch;
     private GhibliSwitch musicSwitch;
+    private GhibliSwitch rotationSwitch;
+    private GhibliSwitch resourcesSwitch;
+    private TextView musicCountdown;
     private GhibliSeekBar fxVolumeBar;
     private TextView fxVolumeText;
     private GhibliSeekBar musicVolumeBar;
     private TextView musicVolumeText;
+    private final Runnable musicCountdownTick = this::refreshMusicCountdown;
 
     private OnSettingsActionListener listener;
 
@@ -83,14 +91,11 @@ public class SettingsPanel extends FrameLayout {
         scrollView = new ScrollView(context);
         scrollView.setVerticalScrollBarEnabled(false);
 
-        content = new LinearLayout(context);
-        content.setOrientation(LinearLayout.VERTICAL);
+        mainMenu = createPage();
+        content = mainMenu;
 
         buildSettingsRows(context);
-
-        scrollView.addView(content, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
+        showPage(mainMenu, "Налаштування");
 
         sheetContainer.setBodyView(scrollView);
         addView(sheetContainer, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
@@ -101,45 +106,45 @@ public class SettingsPanel extends FrameLayout {
     }
 
     private void buildSettingsRows(Context context) {
-        // 1. Spirit focus effect picker link
+        LinearLayout appearance = createPage();
+        addGroup("Вигляд", appearance);
         View spiritRow = createNavigationLink("Духи навігації", getTechniqueName(prefs.getTechnique()), v -> {
             if (listener != null) listener.onSpiritsRequested();
         });
         spiritValueText = spiritRow.findViewById(android.R.id.text2);
-        content.addView(spiritRow);
+        appearance.addView(spiritRow);
 
-        // 2. Focus sound selector
-        Spinner soundSpinner = createStyledSpinner(context);
-        setupHighlightSoundSpinner(soundSpinner);
-        content.addView(createSpinnerRow("Звук виділення", "Один спільний звук фокусу для всіх застосунків.", soundSpinner));
-
-        // 3. Motion Switch
         motionSwitch = new GhibliSwitch(context);
-        content.addView(createSwitchRow("Живий світ", "Листя, пелюстки, паралакс та рухомі духи.",
+        appearance.addView(createSwitchRow("Живий світ", "Листя, пелюстки, паралакс та рухомі духи.",
                 motionSwitch, prefs.isMotionEnabled(), (sw, checked) -> {
                     prefs.setMotionEnabled(checked);
                     audioController.playUiSound();
                 }));
 
-        // 4. Audio Effects Switch
+        Spinner rotSpinner = createStyledSpinner(context);
+        setupRotationSpinner(rotSpinner);
+        appearance.addView(createSpinnerRow("Зміна сцен", "Автоматична ротація 8 краєвидів.", rotSpinner));
+
+        Spinner idleSpinner = createStyledSpinner(context);
+        setupIdleSpinner(idleSpinner);
+        appearance.addView(createSpinnerRow("Режим спокою", "Автоматичний перехід у тиху мить.", idleSpinner));
+
+        LinearLayout audio = createPage();
+        addGroup("Звук і музика", audio);
+        Spinner soundSpinner = createStyledSpinner(context);
+        setupHighlightSoundSpinner(soundSpinner);
+        audio.addView(createSpinnerRow("Звук виділення", "Один спільний звук фокусу для всіх застосунків.", soundSpinner));
+
         audioSwitch = new GhibliSwitch(context);
-        content.addView(createSwitchRow("Звуки духів", "Дзвіночки, полум’я, шепіт лісу й звуки мінігри.",
+        audio.addView(createSwitchRow("Звуки духів", "Дзвіночки, полум’я, шепіт лісу й звуки мінігри.",
                 audioSwitch, prefs.isAudioEnabled(), (sw, checked) -> {
                     prefs.setAudioEnabled(checked);
                     if (!checked) audioController.stopTechniquePreview();
                     audioController.updateMusic();
+                    refreshMusicCountdown();
                     audioController.playUiSound();
                 }));
 
-        // 5. Ambient Music Switch
-        musicSwitch = new GhibliSwitch(context);
-        content.addView(createSwitchRow("Музика долини", "Оригінальні мелодії з аніме Studio Ghibli (Тоторо, Привиди, Замок Хаула).",
-                musicSwitch, prefs.isAmbienceEnabled(), (sw, checked) -> {
-                    prefs.setAmbienceEnabled(checked);
-                    audioController.updateMusic();
-                }));
-
-        // 6. FX Volume
         int currentFx = (int) (prefs.getVolume() * 100);
         fxVolumeBar = new GhibliSeekBar(context);
         View fxVolRow = createSliderRow("Гучність ефектів", "Окремий баланс для цього лаунчера.",
@@ -148,14 +153,30 @@ public class SettingsPanel extends FrameLayout {
                     if (fxVolumeText != null) fxVolumeText.setText(val + "%");
                 });
         fxVolumeText = fxVolRow.findViewById(android.R.id.text2);
-        content.addView(fxVolRow);
+        audio.addView(fxVolRow);
 
-        // 7. Music Track selector
+        musicSwitch = new GhibliSwitch(context);
+        audio.addView(createSwitchRow("Музика долини", "Оригінальні мелодії з аніме Studio Ghibli (Тоторо, Привиди, Замок Хаула).",
+                musicSwitch, prefs.isAmbienceEnabled(), (sw, checked) -> {
+                    prefs.setAmbienceEnabled(checked);
+                    audioController.updateMusic();
+                    refreshMusicCountdown();
+                }));
+
         Spinner musicSpinner = createStyledSpinner(context);
         setupMusicSpinner(musicSpinner);
-        content.addView(createSpinnerRow("Мелодія фону", "Саундтреки Joe Hisaishi з фільмів Studio Ghibli.", musicSpinner));
+        audio.addView(createSpinnerRow("Початковий трек", "Саундтреки Joe Hisaishi з фільмів Studio Ghibli.", musicSpinner));
 
-        // 8. Music Volume
+        rotationSwitch = new GhibliSwitch(context);
+        View rotationRow = createSwitchRow("Автоматично змінювати музику", "Плавний перехід між треками.",
+                rotationSwitch, prefs.isMusicRotationEnabled(), (sw, checked) -> {
+                    prefs.setMusicRotationEnabled(checked);
+                    audioController.updateMusic();
+                    refreshMusicCountdown();
+                });
+        musicCountdown = rotationRow.findViewById(android.R.id.summary);
+        audio.addView(rotationRow);
+
         int currentMusicVol = (int) (prefs.getMusicVolume() * 100);
         musicVolumeBar = new GhibliSeekBar(context);
         View musicVolRow = createSliderRow("Гучність музики", "Окремо від звуків навігації.",
@@ -165,10 +186,9 @@ public class SettingsPanel extends FrameLayout {
                     audioController.updateMusic();
                 });
         musicVolumeText = musicVolRow.findViewById(android.R.id.text2);
-        content.addView(musicVolRow);
+        audio.addView(musicVolRow);
 
-        // 9. Audio preview buttons
-        content.addView(createActionButton("Прослухати звук виділення", v -> {
+        audio.addView(createActionButton("Прослухати звук виділення", v -> {
             audioSwitch.setChecked(true);
             audioController.stopTechniquePreview();
             audioController.playFocusSound();
@@ -177,31 +197,37 @@ public class SettingsPanel extends FrameLayout {
             audioSwitch.setChecked(true);
             audioController.playTechniquePreview(prefs.getTechnique());
         });
-        content.addView(spiritPreviewButton);
+        audio.addView(spiritPreviewButton);
 
-        // 10. Rotation & Idle Spinners
-        Spinner rotSpinner = createStyledSpinner(context);
-        setupRotationSpinner(rotSpinner);
-        content.addView(createSpinnerRow("Зміна сцен", "Автоматична ротація 8 краєвидів.", rotSpinner));
-
-        Spinner idleSpinner = createStyledSpinner(context);
-        setupIdleSpinner(idleSpinner);
-        content.addView(createSpinnerRow("Режим спокою", "Автоматичний перехід у тиху мить.", idleSpinner));
-
-        // 11. System & Utility Links
-        View homeRow = createNavigationLink("Домашній екран", "Зробити основним", v -> {
+        LinearLayout home = createPage();
+        addGroup("Домашній екран", home);
+        View homeRow = createNavigationLink("Основний лаунчер", "Зробити основним", v -> {
             if (listener != null) listener.onHomeScreenRequested();
         });
         homeScreenValueText = homeRow.findViewById(android.R.id.text2);
-        content.addView(homeRow);
+        home.addView(homeRow);
 
         View redirectRow = createNavigationLink(context.getString(R.string.home_redirect_title),
                 context.getString(R.string.home_redirect_disabled), v -> {
                     if (listener != null) listener.onHomeRedirectRequested();
                 });
         homeRedirectValueText = redirectRow.findViewById(android.R.id.text2);
-        content.addView(redirectRow);
+        home.addView(redirectRow);
 
+        LinearLayout system = createPage();
+        addGroup("Система", system);
+        system.addView(createNavigationLink("Налаштування Android TV", "Система", v -> {
+            if (listener != null) listener.onSystemSettingsRequested("system");
+        }));
+        system.addView(createNavigationLink("Налаштування мережі та Wi-Fi", "Wi-Fi", v -> {
+            if (listener != null) listener.onSystemSettingsRequested("wifi");
+        }));
+        system.addView(createNavigationLink("Оновити список застосунків", "Пересканувати", v -> {
+            if (listener != null) listener.onRefreshAppsRequested();
+        }));
+
+        LinearLayout about = createPage();
+        addGroup("Про Ghibli та ресурси", about);
         String installedVersion = "Перевірити версію";
         try {
             installedVersion = "v" + context.getPackageManager()
@@ -209,33 +235,105 @@ public class SettingsPanel extends FrameLayout {
         } catch (android.content.pm.PackageManager.NameNotFoundException error) {
             android.util.Log.w("GhibliSettings", "Installed version unavailable", error);
         }
-        content.addView(createNavigationLink("Оновлення Ghibli", installedVersion, v -> {
+        about.addView(createNavigationLink("Оновлення Ghibli", installedVersion, v -> {
             if (listener != null) listener.onUpdatesRequested();
         }));
-        content.addView(createNavigationLink("Увійти в режим спокою", "Тиха мить", v -> {
-            if (listener != null) listener.onAmbientRequested();
-        }));
-        content.addView(createNavigationLink("Налаштування Android TV", "Система", v -> {
-            if (listener != null) listener.onSystemSettingsRequested("system");
-        }));
-        content.addView(createNavigationLink("Налаштування мережі та Wi-Fi", "Wi-Fi", v -> {
-            if (listener != null) listener.onSystemSettingsRequested("wifi");
-        }));
-        content.addView(createNavigationLink("Оновити список застосунків", "Пересканувати", v -> {
-            if (listener != null) listener.onRefreshAppsRequested();
-        }));
-        content.addView(createNavigationLink("Про Ghibli та ресурси", "Довідка", v -> {
+        resourcesSwitch = new GhibliSwitch(context);
+        about.addView(createSwitchRow("Показувати CPU та RAM",
+                "Використання ресурсів Ghibli на головному екрані.",
+                resourcesSwitch, prefs.shouldShowResources(), (sw, checked) -> {
+                    prefs.setShowResources(checked);
+                    if (listener != null) listener.onResourcesChanged();
+                }));
+        about.addView(createNavigationLink("Про застосунок", "Довідка", v -> {
             if (listener != null) listener.onAboutRequested();
         }));
 
-        // Footer note
-        TextView note = new TextView(context);
-        note.setText("Усі параметри зберігаються автоматично на пристрої. Керування оптимізовано під стандартний пульт D-pad.");
-        note.setTextColor(GhibliTheme.COLOR_MUTED);
-        note.setTextSize(11);
-        note.setTypeface(GhibliTheme.getNunito(context));
-        note.setPadding(0, GhibliTheme.dp(context, 20), 0, GhibliTheme.dp(context, 32));
-        content.addView(note);
+        View quietMoment = createNavigationLink("Тиха мить", "Увійти", v -> {
+            if (listener != null) listener.onAmbientRequested();
+        });
+        quietMoment.setSoundEffectsEnabled(false);
+        mainMenu.addView(quietMoment);
+    }
+
+    private LinearLayout createPage() {
+        LinearLayout page = new LinearLayout(getContext());
+        page.setOrientation(LinearLayout.VERTICAL);
+        return page;
+    }
+
+    private void addGroup(String title, LinearLayout page) {
+        mainMenu.addView(createNavigationLink(title, "›", row -> {
+            openedGroup = row;
+            showPage(page, title);
+            focusInitial();
+        }));
+    }
+
+    private void showPage(LinearLayout page, String title) {
+        content = page;
+        sheetContainer.setTitle(title);
+        scrollView.removeAllViews();
+        scrollView.addView(page, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        scrollView.scrollTo(0, 0);
+        wireVerticalFocus(page);
+        refreshMusicCountdown();
+    }
+
+    private void wireVerticalFocus(LinearLayout page) {
+        View previous = sheetContainer.getCloseButton();
+        if (previous.getId() == View.NO_ID) previous.setId(View.generateViewId());
+        for (int i = 0; i < page.getChildCount(); i++) {
+            View row = page.getChildAt(i);
+            View target = row.getTag() instanceof View ? (View) row.getTag() : row;
+            if (!target.isFocusable()) continue;
+            if (target.getId() == View.NO_ID) target.setId(View.generateViewId());
+            previous.setNextFocusDownId(target.getId());
+            target.setNextFocusUpId(previous.getId());
+            previous = target;
+        }
+        previous.setNextFocusDownId(View.NO_ID);
+    }
+
+    private void refreshMusicCountdown() {
+        removeCallbacks(musicCountdownTick);
+        if (musicCountdown == null || !isAttachedToWindow() || !musicCountdown.isShown()
+                || getWindowVisibility() != View.VISIBLE) return;
+        if (!prefs.isMusicRotationEnabled()) {
+            musicCountdown.setText("Плавний перехід між треками.");
+            return;
+        }
+        long milliseconds = audioController.millisecondsUntilNextTrack();
+        long seconds = (milliseconds + 999) / 1000;
+        musicCountdown.setText(milliseconds < 0 ? "Очікування відтворення музики."
+                : milliseconds == 0 ? "Починається наступний трек…"
+                : String.format(Locale.ROOT, "Наступний трек через %d:%02d", seconds / 60, seconds % 60));
+        postDelayed(musicCountdownTick, 500);
+    }
+
+    @Override protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        refreshMusicCountdown();
+    }
+
+    @Override protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        refreshMusicCountdown();
+    }
+
+    @Override protected void onDetachedFromWindow() {
+        removeCallbacks(musicCountdownTick);
+        super.onDetachedFromWindow();
+    }
+
+    public boolean goBack() {
+        if (openedGroup == null) return false;
+        View row = openedGroup;
+        openedGroup = null;
+        showPage(mainMenu, "Налаштування");
+        focusRow(row);
+        return true;
     }
 
     private View createSwitchRow(String title, String subtitle, GhibliSwitch sw, boolean initial,
@@ -257,6 +355,7 @@ public class SettingsPanel extends FrameLayout {
 
         TextView tvSub = new TextView(getContext());
         tvSub.setText(subtitle);
+        tvSub.setId(android.R.id.summary);
         tvSub.setTextColor(GhibliTheme.COLOR_MUTED);
         tvSub.setTextSize(11);
         tvSub.setTypeface(GhibliTheme.getNunito(getContext()));
@@ -493,6 +592,7 @@ public class SettingsPanel extends FrameLayout {
     }
 
     private void highlightControlRow(ViewGroup row, View control) {
+        row.setTag(control);
         int inset = GhibliTheme.dp(getContext(), 10);
         row.setPadding(inset, row.getPaddingTop(), inset, row.getPaddingBottom());
         row.setBackground(focusBackground(Color.TRANSPARENT, Color.TRANSPARENT));
@@ -563,8 +663,12 @@ public class SettingsPanel extends FrameLayout {
         spinner.setSelection(selectedIndex);
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                prefs.setMusicTrack(CatalogData.MUSIC_TRACKS.get(pos).getId());
-                audioController.updateMusic();
+                String selected = CatalogData.MUSIC_TRACKS.get(pos).getId();
+                if (!selected.equals(prefs.getMusicTrack())) {
+                    prefs.setMusicTrack(selected);
+                    audioController.updateMusic();
+                    refreshMusicCountdown();
+                }
             }
             @Override public void onNothingSelected(AdapterView<?> p) {}
         });
@@ -632,6 +736,12 @@ public class SettingsPanel extends FrameLayout {
         if (musicSwitch != null) {
             musicSwitch.setChecked(prefs.isAmbienceEnabled());
         }
+        if (rotationSwitch != null) {
+            rotationSwitch.setChecked(prefs.isMusicRotationEnabled());
+        }
+        if (resourcesSwitch != null) {
+            resourcesSwitch.setChecked(prefs.shouldShowResources());
+        }
         if (fxVolumeBar != null) {
             fxVolumeBar.setProgress((int) (prefs.getVolume() * 100));
         }
@@ -644,6 +754,7 @@ public class SettingsPanel extends FrameLayout {
         if (musicVolumeText != null) {
             musicVolumeText.setText(((int) (prefs.getMusicVolume() * 100)) + "%");
         }
+        refreshMusicCountdown();
     }
 
     public void updateTechnique(String name) {
@@ -660,13 +771,15 @@ public class SettingsPanel extends FrameLayout {
     }
 
     public void focusInitial() {
+        if (content != null && content.getChildCount() > 0) focusRow(content.getChildAt(0));
+    }
+
+    private void focusRow(View row) {
+        View target = row.getTag() instanceof View ? (View) row.getTag() : row;
         post(() -> {
-            if (content != null && content.getChildCount() > 0) {
-                View first = content.getChildAt(0);
-                if (first != null) {
-                    first.requestFocusFromTouch();
-                    first.requestFocus();
-                }
+            if (row.getParent() == content && isAttachedToWindow()) {
+                target.requestFocusFromTouch();
+                target.requestFocus();
             }
         });
     }

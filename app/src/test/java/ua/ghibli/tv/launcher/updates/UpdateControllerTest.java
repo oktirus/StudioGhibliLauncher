@@ -104,18 +104,22 @@ public class UpdateControllerTest {
         assertFalse(ShadowAlertDialog.getLatestAlertDialog().isShowing());
     }
 
-    @Test public void automaticCheckIsDailyEvenWithAPanelOpen() throws Exception {
+    @Test public void automaticCheckFindsTheReleaseBehindSettingsAndOffersItWhenHomeReturns() throws Exception {
         canPrompt.set(false);
         updates.checkAutomatically();
         finishWorker();
         assertEquals(1, clients.get());
-        assertFalse(updates.isShowing());
         assertEquals("1.2.0", availableVersion);
+        assertFalse(updates.isShowing());
         canPrompt.set(true);
-        updates.checkAutomatically();
-        finishWorker();
+        updates.onHomeAvailable();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertTrue(updates.isShowing());
+        assertTrue(Shadows.shadowOf(ShadowAlertDialog.getLatestAlertDialog()).getTitle().toString().contains("1.2.0"));
+        ShadowAlertDialog.getLatestAlertDialog().dismiss();
         updates.checkAutomatically();
         assertEquals(1, clients.get());
+        assertFalse(updates.isShowing());
     }
 
     @Test public void silentResponseDoesNotInterruptNewlyOpenedModal() throws Exception {
@@ -123,6 +127,27 @@ public class UpdateControllerTest {
         canPrompt.set(false);
         finishWorker();
         assertFalse(updates.isShowing());
+        assertEquals("1.2.0", availableVersion);
+    }
+
+    @Test public void failedAutomaticCheckRetriesWithoutUsingTheSuccessInterval() throws Exception {
+        updates.close();
+        byte[] release = UpdateFixtures.release().toString().getBytes(StandardCharsets.UTF_8);
+        byte[] manifest = UpdateFixtures.manifest().toString().getBytes(StandardCharsets.UTF_8);
+        updates = new UpdateController(activity.get(), canPrompt::get, version -> availableVersion = version, () -> {
+            int attempt = clients.incrementAndGet();
+            return new GitHubReleaseClient(url -> new UpdateFixtures.Response(url,
+                    url.toString().equals(UpdateFixtures.API) ? release : manifest, attempt == 1 ? 503 : 200));
+        });
+        updates.checkAutomatically();
+        finishWorker();
+        assertNull(availableVersion);
+        updates.checkAutomatically();
+        assertEquals(1, clients.get());
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMinutes(5));
+        updates.checkAutomatically();
+        finishWorker();
+        assertEquals(2, clients.get());
         assertEquals("1.2.0", availableVersion);
     }
 

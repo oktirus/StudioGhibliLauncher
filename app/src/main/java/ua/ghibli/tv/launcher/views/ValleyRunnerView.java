@@ -52,6 +52,9 @@ public class ValleyRunnerView extends View {
     private final RectF closeButton = new RectF();
     private final RectF slideButton = new RectF();
     private final RectF jumpButton = new RectF();
+    private float scoreLeft;
+    private float bestLeft;
+    private float scoreTop;
 
     private Runnable onExitListener;
     private Consumer<RunnerCue> onSoundListener;
@@ -354,25 +357,53 @@ public class ValleyRunnerView extends View {
     }
 
     private void updateControlBounds(int w, int h) {
+        float inset = GhibliTheme.dp(getContext(), 24);
+        float gap = GhibliTheme.dp(getContext(), 8);
+        float right = w - inset;
         float tabY = GhibliTheme.dp(getContext(), 52);
         float tabBottom = tabY + GhibliTheme.dp(getContext(), 28);
-        sootTab.set(GhibliTheme.dp(getContext(), 24), tabY,
-                GhibliTheme.dp(getContext(), 132), tabBottom);
-        kodamaTab.set(GhibliTheme.dp(getContext(), 140), tabY,
-                GhibliTheme.dp(getContext(), 236), tabBottom);
-        totoroTab.set(GhibliTheme.dp(getContext(), 244), tabY,
-                GhibliTheme.dp(getContext(), 340), tabBottom);
-        pauseButton.set(w - GhibliTheme.dp(getContext(), 106), tabY,
-                w - GhibliTheme.dp(getContext(), 26), tabBottom);
-        closeButton.set(w - GhibliTheme.dp(getContext(), 36), GhibliTheme.dp(getContext(), 4),
-                w, GhibliTheme.dp(getContext(), 44));
-        float footY = h - GhibliTheme.dp(getContext(), 18);
-        float footTop = footY - GhibliTheme.dp(getContext(), 16);
-        float footBottom = footTop + GhibliTheme.dp(getContext(), 24);
-        slideButton.set(w - GhibliTheme.dp(getContext(), 196), footTop,
-                w - GhibliTheme.dp(getContext(), 112), footBottom);
-        jumpButton.set(w - GhibliTheme.dp(getContext(), 102), footTop,
-                w - GhibliTheme.dp(getContext(), 20), footBottom);
+        pauseButton.set(right - GhibliTheme.dp(getContext(), 88), tabY, right, tabBottom);
+
+        float tabWidth = Math.max(0f, pauseButton.left - inset - 3 * gap);
+        float idealTotal = GhibliTheme.dp(getContext(), 264);
+        float tabScale = idealTotal > 0f ? Math.min(1f, tabWidth / idealTotal) : 1f;
+        float sootWidth = GhibliTheme.dp(getContext(), 100) * tabScale;
+        float kodamaWidth = GhibliTheme.dp(getContext(), 82) * tabScale;
+        float totoroWidth = Math.max(0f, Math.min(GhibliTheme.dp(getContext(), 82) * tabScale,
+                tabWidth - sootWidth - kodamaWidth));
+        sootTab.set(inset, tabY, inset + sootWidth, tabBottom);
+        kodamaTab.set(sootTab.right + gap, tabY, sootTab.right + gap + kodamaWidth, tabBottom);
+        totoroTab.set(kodamaTab.right + gap, tabY, kodamaTab.right + gap + totoroWidth, tabBottom);
+
+        float closeSize = GhibliTheme.dp(getContext(), 36);
+        closeButton.set(right - closeSize, GhibliTheme.dp(getContext(), 8), right,
+                GhibliTheme.dp(getContext(), 8) + closeSize);
+
+        float scoreWidth = GhibliTheme.dp(getContext(), 78);
+        bestLeft = pauseButton.left - gap - scoreWidth;
+        scoreLeft = bestLeft - scoreWidth;
+        boolean compact = scoreLeft < totoroTab.right + gap;
+        scoreTop = tabY;
+        if (compact) {
+            scoreLeft = inset;
+            bestLeft = scoreLeft + scoreWidth;
+            scoreTop = tabBottom + gap;
+        }
+        float headerBottom = Math.max(tabBottom, scoreTop + GhibliTheme.dp(getContext(), 31));
+        float footBottom = h - GhibliTheme.dp(getContext(), 12);
+        float footTop = footBottom - GhibliTheme.dp(getContext(), 28);
+        float actionWidth = GhibliTheme.dp(getContext(), 86);
+        jumpButton.set(right - actionWidth, footTop, right, footBottom);
+        slideButton.set(jumpButton.left - gap - actionWidth, footTop, jumpButton.left - gap, footBottom);
+
+        float top = headerBottom + gap;
+        float height = Math.max(0f, footTop - gap - top);
+        float stageWidth = Math.max(0f, Math.min(w - 2 * inset,
+                height * (float) (RunnerPhysics.W / RunnerPhysics.H)));
+        float stageHeight = stageWidth * (float) (RunnerPhysics.H / RunnerPhysics.W);
+        float stageLeft = (w - stageWidth) / 2f;
+        float stageTop = top + (height - stageHeight) / 2f;
+        stageRect.set(stageLeft, stageTop, stageLeft + stageWidth, stageTop + stageHeight);
     }
 
     @Override
@@ -445,54 +476,40 @@ public class ValleyRunnerView extends View {
         int w = getWidth();
         int h = getHeight();
         if (w == 0 || h == 0) return;
-        updateControlBounds(w, h);
+        if (stageRect.isEmpty()) updateControlBounds(w, h);
 
         paint.reset();
         paint.setAntiAlias(true);
         paint.setColor(GhibliTheme.COLOR_BG);
         canvas.drawRect(0, 0, w, h, paint);
 
-        renderHeader(canvas, w);
+        renderHeader(canvas);
 
-        float topH = GhibliTheme.dp(getContext(), 88);
-        float bottomH = GhibliTheme.dp(getContext(), 56);
-        float availH = h - topH - bottomH;
-        float availW = w - GhibliTheme.dp(getContext(), 48);
+        if (!stageRect.isEmpty()) {
+            canvas.save();
+            stageClipPath.reset();
+            float corner = GhibliTheme.dp(getContext(), 12);
+            stageClipPath.addRoundRect(stageRect, corner, corner, Path.Direction.CW);
+            canvas.clipPath(stageClipPath);
+            canvas.translate(stageRect.left, stageRect.top);
+            float scale = stageRect.width() / (float) RunnerPhysics.W;
+            canvas.scale(scale, scale);
 
-        float stageW = availW;
-        float stageH = stageW * (540f / 1280f);
-        if (stageH > availH) {
-            stageH = availH;
-            stageW = stageH * (1280f / 540f);
+            renderGameContent(canvas);
+
+            if (!"running".equals(runner.status)) {
+                renderStageOverlay(canvas);
+            }
+
+            canvas.restore();
+
+            canvas.drawRoundRect(stageRect, corner, corner, framePaint);
         }
 
-        float stageLeft = (w - stageW) / 2f;
-        float stageTop = topH + (availH - stageH) / 2f;
-        stageRect.set(stageLeft, stageTop, stageLeft + stageW, stageTop + stageH);
-
-        canvas.save();
-        stageClipPath.reset();
-        float corner = GhibliTheme.dp(getContext(), 12);
-        stageClipPath.addRoundRect(stageRect, corner, corner, Path.Direction.CW);
-        canvas.clipPath(stageClipPath);
-        canvas.translate(stageLeft, stageTop);
-        float scale = stageW / (float) RunnerPhysics.W;
-        canvas.scale(scale, scale);
-
-        renderGameContent(canvas);
-
-        if (!"running".equals(runner.status)) {
-            renderStageOverlay(canvas);
-        }
-
-        canvas.restore();
-
-        canvas.drawRoundRect(stageRect, corner, corner, framePaint);
-
-        renderFooter(canvas, w, h);
+        renderFooter(canvas);
     }
 
-    private void renderHeader(Canvas canvas, int w) {
+    private void renderHeader(Canvas canvas) {
         paint.reset();
         paint.setAntiAlias(true);
         paint.setTypeface(GhibliTheme.getCaveatBold(getContext()));
@@ -503,7 +520,6 @@ public class ValleyRunnerView extends View {
         boolean isSoot = "soot".equals(runner.hero);
         boolean isKodama = "kodama".equals(runner.hero);
         boolean isTotoro = "totoro".equals(runner.hero);
-        float tabY = GhibliTheme.dp(getContext(), 52);
 
         drawHeroTab(canvas, sootTab.left, sootTab.top, sootTab.width(), sootTab.height(), "Сусуватарі", isSoot);
         drawHeroTab(canvas, kodamaTab.left, kodamaTab.top, kodamaTab.width(), kodamaTab.height(), "Кодама", isKodama);
@@ -512,18 +528,24 @@ public class ValleyRunnerView extends View {
         paint.setTypeface(GhibliTheme.getNunitoBold(getContext()));
         paint.setTextSize(GhibliTheme.dp(getContext(), 11));
         paint.setColor(GhibliTheme.COLOR_MUTED);
-        canvas.drawText("Відстань", w - GhibliTheme.dp(getContext(), 330), tabY + GhibliTheme.dp(getContext(), 7), paint);
-        canvas.drawText("Рекорд", w - GhibliTheme.dp(getContext(), 210), tabY + GhibliTheme.dp(getContext(), 7), paint);
+        float labelBaseline = scoreTop + GhibliTheme.dp(getContext(), 10);
+        canvas.drawText("Відстань", scoreLeft, labelBaseline, paint);
+        canvas.drawText("Рекорд", bestLeft, labelBaseline, paint);
 
         paint.setTextSize(GhibliTheme.dp(getContext(), 18));
         paint.setColor(GhibliTheme.COLOR_PAPER);
         String scoreStr = String.format(java.util.Locale.ROOT, "%05d", runner.getScore());
         String bestStr = String.format(java.util.Locale.ROOT, "%05d", Math.max(runner.getScore(), prefs.getRunnerBest(runner.hero)));
-        canvas.drawText(scoreStr, w - GhibliTheme.dp(getContext(), 330), tabY + GhibliTheme.dp(getContext(), 26), paint);
-        canvas.drawText(bestStr, w - GhibliTheme.dp(getContext(), 210), tabY + GhibliTheme.dp(getContext(), 26), paint);
+        float valueBaseline = scoreTop + GhibliTheme.dp(getContext(), 28);
+        canvas.drawText(scoreStr, scoreLeft, valueBaseline, paint);
+        canvas.drawText(bestStr, bestLeft, valueBaseline, paint);
 
-        drawPillButton(canvas, pauseButton.left, pauseButton.top, pauseButton.width(), pauseButton.height(),
-                "running".equals(runner.status) ? "⏸ Пауза" : "▶ Старт");
+        String pauseLabel = switch (runner.status) {
+            case "running" -> "Пауза";
+            case "paused" -> "Продовжити";
+            default -> "Старт";
+        };
+        drawPillButton(canvas, pauseButton.left, pauseButton.top, pauseButton.width(), pauseButton.height(), pauseLabel);
 
         paint.setColor(GhibliTheme.COLOR_PAPER);
         paint.setStrokeWidth(2f);
@@ -657,12 +679,22 @@ public class ValleyRunnerView extends View {
         paint.setTextAlign(Paint.Align.LEFT);
     }
 
-    private void renderFooter(Canvas canvas, int w, int h) {
-        float footY = h - GhibliTheme.dp(getContext(), 18);
+    private void renderFooter(Canvas canvas) {
+        float left = GhibliTheme.dp(getContext(), 24);
+        String hint = "ready".equals(runner.status)
+                ? "← → дух  ·  OK почати" : "Menu — пауза  ·  Back — вихід";
         paint.setTypeface(GhibliTheme.getNunito(getContext()));
         paint.setTextSize(GhibliTheme.dp(getContext(), 12));
         paint.setColor(GhibliTheme.COLOR_MUTED);
-        canvas.drawText("Обери духа долини (←/→) та рушай у путь.", GhibliTheme.dp(getContext(), 24), footY, paint);
+        paint.setTextAlign(Paint.Align.LEFT);
+        float maxWidth = slideButton.left - left - GhibliTheme.dp(getContext(), 8);
+        if (paint.measureText(hint) > maxWidth) {
+            hint = "ready".equals(runner.status) ? "OK — почати" : "Menu — пауза";
+        }
+        if (paint.measureText(hint) <= maxWidth) {
+            float baseline = slideButton.centerY() - (paint.ascent() + paint.descent()) / 2f;
+            canvas.drawText(hint, left, baseline, paint);
+        }
 
         drawPillButton(canvas, slideButton.left, slideButton.top, slideButton.width(), slideButton.height(), "↓ Присісти");
         drawPillButton(canvas, jumpButton.left, jumpButton.top, jumpButton.width(), jumpButton.height(), "↑ Стрибок");

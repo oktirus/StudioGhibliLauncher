@@ -43,6 +43,7 @@ import ua.ghibli.tv.launcher.updates.UpdateController;
 import ua.ghibli.tv.launcher.views.DockView;
 import ua.ghibli.tv.launcher.views.GlyphIconView;
 import ua.ghibli.tv.launcher.views.HeroTitleView;
+import ua.ghibli.tv.launcher.views.LauncherResourceMonitor;
 import ua.ghibli.tv.launcher.views.OutlinedGlyphButton;
 import ua.ghibli.tv.launcher.views.SpiritFocusView;
 import ua.ghibli.tv.launcher.views.SpiritRenderer;
@@ -74,6 +75,7 @@ public class MainActivity extends Activity {
     private DockView dockView;
     private ToastOverlay toastOverlay;
     private AmbientOverlay ambientOverlay;
+    private LauncherResourceMonitor resources;
 
     // UI elements
     private TextView timeView;
@@ -103,8 +105,12 @@ public class MainActivity extends Activity {
     private boolean lastFocusedIsLibrary = false;
     private boolean activityResumed;
     private UpdateController updateController;
-    private final Runnable updateCheckRunnable = () -> {
-        if (updateController != null) updateController.checkAutomatically();
+    private final Runnable updateCheckRunnable = new Runnable() {
+        @Override public void run() {
+            if (!activityResumed) return;
+            if (updateController != null) updateController.checkAutomatically();
+            mainHandler.postDelayed(this, 60_000L);
+        }
     };
     private boolean appInventoryReady;
     private boolean focusFirstAppOnHomeEntry = true;
@@ -398,9 +404,10 @@ public class MainActivity extends Activity {
     private LinearLayout createHeroSection() {
         LinearLayout hero = new LinearLayout(this);
         hero.setOrientation(LinearLayout.VERTICAL);
-        hero.setGravity(Gravity.CENTER_VERTICAL);
-        hero.setPadding(0, 0, 0, 0);
+        hero.setGravity(Gravity.BOTTOM);
+        hero.setPadding(0, 0, 0, dp(8));
 
+        // Keep the caption and scene selector at their natural height on shorter TV viewports.
         LinearLayout copy = new LinearLayout(this);
         copy.setOrientation(LinearLayout.VERTICAL);
         hero.addView(copy, new LinearLayout.LayoutParams(
@@ -446,9 +453,9 @@ public class MainActivity extends Activity {
         LinearLayout heading = new LinearLayout(this);
         heading.setOrientation(LinearLayout.HORIZONTAL);
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        heading.setPadding(0, 0, 0, dp(4));
+        heading.setPaddingRelative(dp(9), 0, 0, dp(4));
 
-        // Botanical acorn-seal badge
+        // Botanical acorn-seal badge aligned with the scene selector icon & label
         FrameLayout sealWrap = new FrameLayout(this);
         GradientDrawable sealBg = new GradientDrawable();
         sealBg.setColor(Color.parseColor("#551c3127"));
@@ -464,7 +471,8 @@ public class MainActivity extends Activity {
 
         int sealSize = dp(22);
         LinearLayout.LayoutParams sealLp = new LinearLayout.LayoutParams(sealSize, sealSize);
-        sealLp.setMargins(0, 0, dp(8), 0);
+        int labelStart = sceneChoiceBtn.getPaddingStart() + dp(16) + dp(8);
+        sealLp.setMarginEnd(labelStart - heading.getPaddingStart() - sealSize);
         heading.addView(sealWrap, sealLp);
 
         TextView title = new TextView(this);
@@ -528,6 +536,16 @@ public class MainActivity extends Activity {
         guide.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
         guide.setTypeface(GhibliTheme.getNunito(this));
         footer.addView(guide, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView resourceStats = new TextView(this);
+        resourceStats.setTextColor(GhibliTheme.COLOR_PAPER);
+        resourceStats.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        resourceStats.setTypeface(GhibliTheme.getNunito(this));
+        resourceStats.setSingleLine(true);
+        resourceStats.setPaddingRelative(dp(8), 0, dp(12), 0);
+        resourceStats.setVisibility(View.GONE);
+        footer.addView(resourceStats);
+        resources = new LauncherResourceMonitor(resourceStats, mainHandler);
 
         TextView tag = new TextView(this);
         tag.setText("Долина Ghibli · Вітер змін");
@@ -764,6 +782,7 @@ public class MainActivity extends Activity {
             resetIdleTimer();
             wireSpatialNavigation();
             restoreHomeFocus();
+            updateController.onHomeAvailable();
         }
     }
 
@@ -871,6 +890,7 @@ public class MainActivity extends Activity {
                     });
                 }
                 @Override public void onAboutRequested() { showAboutDialog(); }
+                @Override public void onResourcesChanged() { updateResourceDisplay(); }
                 @Override public void onCloseRequested() { closeActivePanel(); }
             });
         }
@@ -885,6 +905,11 @@ public class MainActivity extends Activity {
         if (settingsPanel == null) return;
         settingsPanel.setHomeScreenActive(homeScreenSetup.isDefaultHome());
         settingsPanel.setHomeRedirectEnabled(HomeRedirectService.isEnabled(this));
+    }
+
+    private void updateResourceDisplay() {
+        resources.setActive(activityResumed && mainShell.getVisibility() == View.VISIBLE
+                && prefs.shouldShowResources());
     }
 
     private void openGame() {
@@ -1049,18 +1074,20 @@ public class MainActivity extends Activity {
         spiritFocusView.setTargetView(null);
         ambientOverlay.start();
         mainShell.setVisibility(View.INVISIBLE);
+        updateResourceDisplay();
         mainShell.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
         backgroundView.setDecorPaused(true);
-        audioController.playUiSound();
     }
 
     private void exitAmbient() {
         ambientOverlay.stop();
         mainShell.setVisibility(View.VISIBLE);
+        updateResourceDisplay();
         mainShell.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         backgroundView.setDecorPaused(false);
         resetIdleTimer();
         restoreHomeFocus();
+        updateController.onHomeAvailable();
     }
 
     private void setupTimers() {
@@ -1133,6 +1160,7 @@ public class MainActivity extends Activity {
             if (back) {
                 if (audioController.cancelPendingLaunch()) {
                     toastOverlay.hide();
+                    updateController.onHomeAvailable();
                     return true;
                 }
                 if (ambientOverlay.getVisibility() == View.VISIBLE) {
@@ -1140,7 +1168,7 @@ public class MainActivity extends Activity {
                     return true;
                 }
                 if (activePanel != null) {
-                    closeActivePanel();
+                    if (activePanel != settingsPanel || !settingsPanel.goBack()) closeActivePanel();
                     return true;
                 }
                 View firstCard = dockView != null ? dockView.getFirstCard() : null;
@@ -1167,26 +1195,35 @@ public class MainActivity extends Activity {
             }
         }
 
-        return super.dispatchKeyEvent(event) || moveFocusToDock(event);
-    }
+        if (event.getAction() != KeyEvent.ACTION_DOWN || !activityResumed || activePanel != null
+                || ambientOverlay.getVisibility() == View.VISIBLE) {
+            return super.dispatchKeyEvent(event);
+        }
+        final int direction;
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_LEFT: direction = View.FOCUS_LEFT; break;
+            case KeyEvent.KEYCODE_DPAD_RIGHT: direction = View.FOCUS_RIGHT; break;
+            case KeyEvent.KEYCODE_DPAD_UP: direction = View.FOCUS_UP; break;
+            case KeyEvent.KEYCODE_DPAD_DOWN: direction = View.FOCUS_DOWN; break;
+            default: return super.dispatchKeyEvent(event);
+        }
 
-    private boolean moveFocusToDock(KeyEvent event) {
-        if (!activityResumed || event.getAction() != KeyEvent.ACTION_DOWN || activePanel != null
-                || ambientOverlay.getVisibility() == View.VISIBLE) return false;
-        int direction = switch (event.getKeyCode()) {
-            case KeyEvent.KEYCODE_DPAD_LEFT -> View.FOCUS_LEFT;
-            case KeyEvent.KEYCODE_DPAD_RIGHT -> View.FOCUS_RIGHT;
-            case KeyEvent.KEYCODE_DPAD_UP -> View.FOCUS_UP;
-            case KeyEvent.KEYCODE_DPAD_DOWN -> View.FOCUS_DOWN;
-            default -> 0;
-        };
-        View current = rootLayout.findFocus();
-        if (direction == 0 || current == null) return false;
-        View next = current.focusSearch(direction);
-        if (next == current || !isInside(next, dockView) || !next.requestFocus(direction)) return false;
-        focusFirstAppOnHomeEntry = false;
-        audioController.playFocusSound();
-        return true;
+        // Home intents, layout and inventory refresh can all change focus without navigation input.
+        View before = rootLayout.findFocus();
+        boolean handled = super.dispatchKeyEvent(event);
+        View after = rootLayout.findFocus();
+        if (!handled && before != null && after == before) {
+            View next = before.focusSearch(direction);
+            if (next != before && isInside(next, dockView) && next.requestFocus(direction)) {
+                after = next;
+                handled = true;
+            }
+        }
+        if (after != before && isInside(after, dockView)) {
+            focusFirstAppOnHomeEntry = false;
+            audioController.playFocusSound();
+        }
+        return handled;
     }
 
     @Override
@@ -1205,6 +1242,7 @@ public class MainActivity extends Activity {
             if (ambientOverlay.getVisibility() == View.VISIBLE) exitAmbient();
             closeActivePanel();
             restoreHomeFocus();
+            updateController.onHomeAvailable();
         }
     }
 
@@ -1220,6 +1258,7 @@ public class MainActivity extends Activity {
                 && (ambientOverlay == null || ambientOverlay.getVisibility() != View.VISIBLE)) {
             restoreHomeFocus();
             homeScreenSetup.showFirstRunPrompt();
+            updateController.onHomeAvailable();
         }
     }
 
@@ -1239,6 +1278,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         activityResumed = true;
+        updateResourceDisplay();
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN
                         | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
@@ -1281,6 +1321,7 @@ public class MainActivity extends Activity {
         homeScreenSetup.onResume();
         updateHomeSettingsStatus();
         updateController.onResume();
+        updateController.onHomeAvailable();
         mainHandler.removeCallbacks(updateCheckRunnable);
         mainHandler.postDelayed(updateCheckRunnable, 3000);
         setupTimers();
@@ -1290,6 +1331,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         activityResumed = false;
+        updateResourceDisplay();
         TVKeyHelper.cancelPendingPress(getWindow().getDecorView().findFocus());
         closeContextMenu(false);
         mainHandler.removeCallbacks(updateCheckRunnable);
@@ -1327,6 +1369,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         closeContextMenu(false);
+        if (resources != null) resources.close();
         mainHandler.removeCallbacksAndMessages(null);
         if (focusChangeListener != null && rootLayout != null && rootLayout.getViewTreeObserver().isAlive()) {
             rootLayout.getViewTreeObserver().removeOnGlobalFocusChangeListener(focusChangeListener);

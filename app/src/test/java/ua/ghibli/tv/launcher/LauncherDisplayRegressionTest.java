@@ -71,20 +71,28 @@ public class LauncherDisplayRegressionTest {
         call(activity, "openSettings");
         layout(activity);
         SettingsPanel panel = field(activity, "settingsPanel");
-        ViewGroup content = field(panel, "content");
-        View otherFocus = content.getChildAt(0);
+        ViewGroup groups = field(panel, "content");
+        ua.ghibli.tv.launcher.panels.SideSheetContainer sheet = field(panel, "sheetContainer");
         int checked = 0;
-        for (int i = 0; i < content.getChildCount(); i++) {
-            View row = content.getChildAt(i);
-            View control = findControl(row);
-            if (control == null) continue;
-            assertTrue(otherFocus.requestFocusFromTouch());
-            int normal = rowPixel(row);
-            assertTrue(control.requestFocusFromTouch());
-            assertNotEquals("Visible row focus for " + control.getClass().getSimpleName(), normal, rowPixel(row));
-            checked++;
+        for (int groupIndex : new int[]{0, 1, 4}) {
+            assertTrue(groups.getChildAt(groupIndex).performClick());
+            layout(activity);
+            ViewGroup content = field(panel, "content");
+            for (int i = 0; i < content.getChildCount(); i++) {
+                View row = content.getChildAt(i);
+                View control = findControl(row);
+                if (control == null) continue;
+                assertTrue(sheet.getCloseButton().requestFocusFromTouch());
+                int normal = rowPixel(row);
+                assertTrue(control.requestFocusFromTouch());
+                assertNotEquals("Visible row focus for " + control.getClass().getSimpleName(), normal, rowPixel(row));
+                checked++;
+            }
+            capture(activity, "settings-group-" + groupIndex + "-963");
+            assertTrue(panel.goBack());
+            layout(activity);
         }
-        assertEquals("Three toggles, two sliders, four selectors", 9, checked);
+        assertEquals("Five toggles, two sliders, four selectors", 11, checked);
         capture(activity, "settings-focus-963");
     }
 
@@ -92,8 +100,10 @@ public class LauncherDisplayRegressionTest {
         MainActivity activity = start();
         call(activity, "openSettings");
         SettingsPanel panel = field(activity, "settingsPanel");
+        ViewGroup groups = field(panel, "content");
+        assertTrue(groups.getChildAt(1).performClick());
         ViewGroup content = field(panel, "content");
-        Spinner spinner = (Spinner) findControl(content.getChildAt(1));
+        Spinner spinner = (Spinner) findControl(content.getChildAt(0));
         View item = spinner.getAdapter().getDropDownView(0, null, content);
         item.measure(View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(200, View.MeasureSpec.AT_MOST));
@@ -125,8 +135,63 @@ public class LauncherDisplayRegressionTest {
             TextView label = field(button, "labelView");
             assertTrue("Caption retains its text height for " + scene.getName(),
                     label.getHeight() >= label.getLayout().getHeight());
+            if (scene == CatalogData.SCENES.get(0)) {
+                View dock = field(activity, "dockView");
+                ViewGroup heading = (ViewGroup) ((ViewGroup) dock.getParent()).getChildAt(0);
+                int[] labelPosition = new int[2];
+                int[] titlePosition = new int[2];
+                int[] buttonPosition = new int[2];
+                int[] headingPosition = new int[2];
+                label.getLocationInWindow(labelPosition);
+                heading.getChildAt(1).getLocationInWindow(titlePosition);
+                button.getLocationInWindow(buttonPosition);
+                heading.getLocationInWindow(headingPosition);
+                assertEquals("Wallpaper name and favorites heading share the same text axis",
+                        labelPosition[0], titlePosition[0]);
+                assertEquals("Spacing below the wallpaper pill",
+                        8, headingPosition[1] - (buttonPosition[1] + button.getHeight()));
+            }
         }
         capture(activity, "wallpaper-caption-963");
+    }
+
+    @Test public void runnerStageAndControlsStayAlignedAtWideAndNarrowSizes() throws Exception {
+        MainActivity activity = start();
+        call(activity, "openGame");
+        ua.ghibli.tv.launcher.views.ValleyRunnerView game = field(activity, "runnerGameView");
+        drain((ExecutorService) field(game, "bitmapExecutor"));
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        for (int width : new int[]{963, 400}) {
+            int height = width == 963 ? 541 : 320;
+            game.layout(0, 0, width, height);
+            android.graphics.RectF stage = field(game, "stageRect");
+            android.graphics.RectF soot = field(game, "sootTab");
+            android.graphics.RectF kodama = field(game, "kodamaTab");
+            android.graphics.RectF totoro = field(game, "totoroTab");
+            android.graphics.RectF pause = field(game, "pauseButton");
+            android.graphics.RectF close = field(game, "closeButton");
+            android.graphics.RectF slide = field(game, "slideButton");
+            android.graphics.RectF jump = field(game, "jumpButton");
+            assertTrue("Soot tab precedes Kodama tab at " + width, soot.right < kodama.left);
+            assertTrue("Kodama tab precedes Totoro tab at " + width, kodama.right < totoro.left);
+            assertTrue("Hero tabs stay clear of pause button at " + width, totoro.right < pause.left);
+            assertEquals(close.right, pause.right, 0.01f);
+            assertEquals(pause.right, jump.right, 0.01f);
+            assertTrue(slide.right < jump.left);
+            assertTrue(stage.top >= pause.bottom);
+            assertTrue(stage.bottom < jump.top);
+            assertEquals(width / 2f, stage.centerX(), 0.01f);
+            game.startGame();
+            Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            game.draw(new Canvas(bitmap));
+            File dir = new File("build/reports/native-ui");
+            assertTrue(dir.isDirectory() || dir.mkdirs());
+            try (FileOutputStream stream = new FileOutputStream(new File(dir, "runner-trail-" + width + ".png"))) {
+                assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream));
+            } finally {
+                bitmap.recycle();
+            }
+        }
     }
 
     private static View findControl(View view) {

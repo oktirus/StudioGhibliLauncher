@@ -9,6 +9,7 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.widget.Toast;
 import java.io.File;
@@ -23,6 +24,8 @@ public final class UpdateController {
     private static final String LAST_CHECK = "last_successful_check";
     private static final String AVAILABLE_CODE = "available_code";
     private static final String AVAILABLE_NAME = "available_name";
+    private static final long CHECK_INTERVAL_MS = 30 * 60 * 1000L;
+    private static final long RETRY_INTERVAL_MS = 5 * 60 * 1000L;
     private final Activity activity;
     private final BooleanSupplier canPrompt;
     private final Consumer<String> onAvailability;
@@ -33,10 +36,15 @@ public final class UpdateController {
     private GitHubReleaseClient request;
     private AlertDialog dialog;
     private ReleaseUpdate readyUpdate;
+    private ReleaseUpdate pendingUpdate;
+    private long autoOfferedCode;
+    private long lastFailureElapsed = -1L;
+    private final Runnable offerPending = this::offerPendingUpdate;
     private File readyApk;
     private boolean waitingForPermission;
     private boolean closed;
     private boolean busy;
+    private boolean silentCheck;
     private long generation;
 
     public UpdateController(Activity activity, BooleanSupplier canPrompt, Consumer<String> onAvailability) {
@@ -74,21 +82,39 @@ public final class UpdateController {
     }
 
     public void checkManually() {
-        if (closed || busy) return;
+        if (closed || (busy && !silentCheck)) return;
         if (readyUpdate != null && readyApk != null && readyApk.isFile()) { showReady(); return; }
         check(false);
     }
 
     public void checkAutomatically() {
+        offerPendingUpdate();
+        if (closed || busy || isShowing()) return;
         long now = System.currentTimeMillis();
         long previous = state.getLong(LAST_CHECK, 0);
-        if (!closed && !busy && !isShowing() && (now < previous || now - previous >= 24L * 60 * 60 * 1000)) {
+        boolean needsPendingRestore = pendingUpdate == null && state.getLong(AVAILABLE_CODE, 0L) > 0L;
+        if ((lastFailureElapsed < 0 || SystemClock.elapsedRealtime() - lastFailureElapsed >= RETRY_INTERVAL_MS)
+                && (needsPendingRestore || now < previous || now - previous >= CHECK_INTERVAL_MS)) {
             check(true);
         }
     }
 
+    public void onHomeAvailable() {
+        if (closed || pendingUpdate == null || pendingUpdate.versionCode == autoOfferedCode) return;
+        main.removeCallbacks(offerPending);
+        main.post(offerPending);
+    }
+
+    private void offerPendingUpdate() {
+        if (closed || busy || isShowing() || pendingUpdate == null || pendingUpdate.versionCode == autoOfferedCode
+                || !canPrompt.getAsBoolean()) return;
+        autoOfferedCode = pendingUpdate.versionCode;
+        showAvailable(pendingUpdate);
+    }
+
     private void check(boolean silent) {
         long token = beginRequest();
+        silentCheck = silent;
         GitHubReleaseClient client = request;
         if (!silent) showProgress("Перевірка оновлень…");
         worker.execute(() -> {
@@ -99,19 +125,22 @@ public final class UpdateController {
                     if (!active(token)) return;
                     busy = false;
                     dismissDialog();
-                    boolean available = update.versionCode > current;
+                    lastFailureElapsed = -1L;
+                    pendingUpdate = update.versionCode > current ? update : null;
                     android.content.SharedPreferences.Editor preferences =
                             state.edit().putLong(LAST_CHECK, System.currentTimeMillis());
-                    if (available) {
-                        preferences.putLong(AVAILABLE_CODE, update.versionCode).putString(AVAILABLE_NAME, update.versionName);
-                    } else {
+                    if (pendingUpdate == null) {
                         preferences.remove(AVAILABLE_CODE).remove(AVAILABLE_NAME);
+                    } else {
+                        preferences.putLong(AVAILABLE_CODE, update.versionCode).putString(AVAILABLE_NAME, update.versionName);
                     }
                     preferences.apply();
-                    onAvailability.accept(available ? update.versionName : null);
-                    if (silent && !canPrompt.getAsBoolean()) return;
-                    if (available) showAvailable(update);
-                    else if (!silent) message("Оновлення", "Встановлено найновішу версію Ghibli.");
+                    onAvailability.accept(pendingUpdate == null ? null : update.versionName);
+                    if (silent) offerPendingUpdate();
+                    else if (pendingUpdate != null) {
+                        autoOfferedCode = update.versionCode;
+                        showAvailable(update);
+                    } else message("Оновлення", "Встановлено найновішу версію Ghibli.");
                 });
             } catch (Exception error) { reportError(token, error, silent); }
         });
@@ -122,6 +151,7 @@ public final class UpdateController {
         if (request != null) request.cancel();
         request = clients.get();
         busy = true;
+        silentCheck = false;
         return ++generation;
     }
 
@@ -216,6 +246,7 @@ public final class UpdateController {
             dismissDialog();
             readyUpdate = null;
             readyApk = null;
+            if (silent) lastFailureElapsed = SystemClock.elapsedRealtime();
             String detail = error.getMessage();
             if (!silent) message("Оновлення не виконано", error instanceof java.io.IOException
                     && detail != null && !detail.contains("http") ? detail
@@ -233,6 +264,7 @@ public final class UpdateController {
     private void dismissDialog() { if (dialog != null) { dialog.dismiss(); dialog = null; } }
 
     public void cancel() {
+        main.removeCallbacks(offerPending);
         generation++;
         busy = false;
         if (request != null) request.cancel();
