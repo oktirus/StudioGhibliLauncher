@@ -9,6 +9,6 @@ __pycache__/
 *.jks
 *.keystore
 *.p12
-releases/
-release-staging/
-verification/
+/releases/
+/release-staging/
+/verification/

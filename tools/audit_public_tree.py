@@ -5,7 +5,8 @@ import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-PRIVATE_PARTS = {'.gradle', 'build', 'local-backups', 'release-staging', 'releases', 'verification', 'handoff'}
+PRIVATE_PARTS = {'.gradle', 'build', 'local-backups', 'release-staging', 'verification', 'handoff'}
+PRIVATE_TOP_DIRS = {'releases'}
 PRIVATE_SUFFIXES = {'.dpapi', '.key', '.pem', '.jks', '.keystore', '.p12', '.pfx', '.apk', '.zip'}
 BINARY_SUFFIXES = {'.png', '.jpg', '.jpeg', '.webp', '.ttf', '.woff2', '.wav', '.ogg', '.m4a', '.mp4', '.jar'}
 SECRETS = [
@@ -23,6 +24,7 @@ def forbidden(path):
     p = PurePosixPath(path)
     return bool(
         set(p.parts) & PRIVATE_PARTS
+        or (p.parts and p.parts[0] in PRIVATE_TOP_DIRS)
         or p.suffix.lower() in PRIVATE_SUFFIXES
         or p.name in {'.env', '.mcp.json', 'local.properties'}
         or path.endswith('/settings.local.json')
@@ -79,9 +81,10 @@ def main():
     parser.add_argument('--self-test', action='store_true')
     args = parser.parse_args()
     if args.self_test:
-        assert all(forbidden(p) for p in ['verification/app-data.dpapi', 'signing/release.jks', 'releases/GhibliValley-1.0.0.apk'])
+        assert all(forbidden(p) for p in ['verification/app-data.dpapi', 'signing/release.jks', 'releases/GhibliValley-1.0.0.apk', 'releases/notes.txt'])
         assert not forbidden('app/src/main/java/ua/ghibli/tv/launcher/MainActivity.java')
         assert not forbidden('.release-certificate.sha256')
+        assert not forbidden('docs/releases/1.0.0.md')
         assert any(p.search(('ghp_' + 'A' * 40).encode()) for p in SECRETS)
         print('PASS: guard rejects reintroduced private paths and token fixtures')
         return
