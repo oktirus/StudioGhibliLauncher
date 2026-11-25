@@ -156,6 +156,42 @@ public class NativeUiRenderTest {
                 if ("runnerGameView".equals(panel[2])) flush(activity, panel[2], "bitmapExecutor");
                 flush(activity, "dockView", "iconExecutor");
                 capture(activity, panel[1], 1366, 768);
+                if ("runnerGameView".equals(panel[2])) {
+                    ua.ghibli.tv.launcher.views.ValleyRunnerView game = NativeLifecycleTest.field(activity, "runnerGameView");
+                    ua.ghibli.tv.launcher.game.RunnerPhysics rp = NativeLifecycleTest.field(game, "runner");
+                    rp.start();
+                    rp.distance = 620.0;
+                    rp.elapsed = 1.45;
+                    rp.obstacles.clear();
+                    rp.obstacles.add(new ua.ghibli.tv.launcher.game.RunnerPhysics.Obstacle(1, "stump", 520.0, 394.0, 62.0, 46.0));
+                    rp.obstacles.add(new ua.ghibli.tv.launcher.game.RunnerPhysics.Obstacle(2, "stone", 820.0, 368.0, 42.0, 72.0));
+                    rp.obstacles.add(new ua.ghibli.tv.launcher.game.RunnerPhysics.Obstacle(3, "paper_bird", 1040.0, 344.0, 46.0, 34.0));
+                    capture(activity, "game-running-soot-1366", 1366, 768);
+
+                    game.setHero("kodama");
+                    flush(activity, panel[2], "bitmapExecutor");
+                    rp.start();
+                    rp.distance = 980.0;
+                    rp.elapsed = 2.15;
+                    rp.y = 82.0;
+                    rp.vy = -210.0;
+                    rp.obstacles.clear();
+                    rp.obstacles.add(new ua.ghibli.tv.launcher.game.RunnerPhysics.Obstacle(4, "stump", 380.0, 394.0, 62.0, 46.0));
+                    rp.obstacles.add(new ua.ghibli.tv.launcher.game.RunnerPhysics.Obstacle(5, "paper_bird", 670.0, 344.0, 46.0, 34.0));
+                    rp.obstacles.add(new ua.ghibli.tv.launcher.game.RunnerPhysics.Obstacle(6, "stone", 990.0, 368.0, 42.0, 72.0));
+                    capture(activity, "game-running-kodama-1366", 1366, 768);
+
+                    game.setHero("totoro");
+                    flush(activity, panel[2], "bitmapExecutor");
+                    rp.start();
+                    rp.distance = 1420.0;
+                    rp.elapsed = 1.68;
+                    rp.obstacles.clear();
+                    rp.obstacles.add(new ua.ghibli.tv.launcher.game.RunnerPhysics.Obstacle(7, "stump", 490.0, 394.0, 62.0, 46.0));
+                    rp.obstacles.add(new ua.ghibli.tv.launcher.game.RunnerPhysics.Obstacle(8, "stone", 790.0, 368.0, 42.0, 72.0));
+                    rp.obstacles.add(new ua.ghibli.tv.launcher.game.RunnerPhysics.Obstacle(9, "paper_bird", 1020.0, 344.0, 46.0, 34.0));
+                    capture(activity, "game-running-totoro-1366", 1366, 768);
+                }
                 activity.closeActivePanel();
             }
             capture(activity, "home-1920", 1920, 1080);

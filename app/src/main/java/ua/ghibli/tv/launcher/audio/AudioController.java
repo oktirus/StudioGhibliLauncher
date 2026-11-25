@@ -150,7 +150,7 @@ public class AudioController {
         for (MusicTrack track : CatalogData.MUSIC_TRACKS) {
             if (track.getId().equals(trackId)) return track.getAssetPath();
         }
-        return "audio/music-" + trackId + ".wav";
+        return "audio/music-" + trackId + ".ogg";
     }
 
     public synchronized MusicState getMusicState() {

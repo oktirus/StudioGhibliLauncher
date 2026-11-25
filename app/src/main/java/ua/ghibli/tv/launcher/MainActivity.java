@@ -3,8 +3,6 @@ package ua.ghibli.tv.launcher;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -19,7 +17,6 @@ import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -55,7 +52,6 @@ import ua.ghibli.tv.launcher.views.ToastOverlay;
 import ua.ghibli.tv.launcher.views.ValleyBackgroundView;
 import ua.ghibli.tv.launcher.views.ValleyRunnerView;
 
-import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
@@ -88,7 +84,7 @@ public class MainActivity extends Activity {
     private TextView quoteAuthorView;
     private OutlinedGlyphButton sceneChoiceBtn;
     private SpiritShortcutButton spiritBtn;
-    private LinearLayout brandBtn;
+    private LinearLayout brandHeader;
     private OutlinedGlyphButton gameBtn;
     private OutlinedGlyphButton settingsBtn;
 
@@ -274,14 +270,14 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(64)
         ));
 
-        // Studio Ghibli valley crest + poetic wordmark
-        brandBtn = new LinearLayout(this);
-        brandBtn.setOrientation(LinearLayout.HORIZONTAL);
-        brandBtn.setGravity(Gravity.CENTER_VERTICAL);
-        brandBtn.setFocusable(true);
-        brandBtn.setFocusableInTouchMode(true);
-        brandBtn.setClickable(true);
-        brandBtn.setPadding(dp(6), dp(4), dp(12), dp(4));
+        // Studio Ghibli valley crest + poetic wordmark (purely decorative, non-selectable)
+        brandHeader = new LinearLayout(this);
+        brandHeader.setOrientation(LinearLayout.HORIZONTAL);
+        brandHeader.setGravity(Gravity.CENTER_VERTICAL);
+        brandHeader.setFocusable(false);
+        brandHeader.setFocusableInTouchMode(false);
+        brandHeader.setClickable(false);
+        brandHeader.setPadding(dp(6), dp(4), dp(12), dp(4));
 
         FrameLayout crestBadge = new FrameLayout(this);
         GradientDrawable crestBg = new GradientDrawable();
@@ -295,7 +291,7 @@ public class MainActivity extends Activity {
         crestGlyph.setIconColor(GhibliTheme.COLOR_ACCENT);
         FrameLayout.LayoutParams glyphLp = new FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER);
         crestBadge.addView(crestGlyph, glyphLp);
-        brandBtn.addView(crestBadge, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        brandHeader.addView(crestBadge, new LinearLayout.LayoutParams(dp(40), dp(40)));
 
         LinearLayout brandCopy = new LinearLayout(this);
         brandCopy.setOrientation(LinearLayout.VERTICAL);
@@ -317,25 +313,8 @@ public class MainActivity extends Activity {
         brandSub.setLetterSpacing(0.12f);
         brandCopy.addView(brandSub);
 
-        brandBtn.addView(brandCopy);
-
-        brandBtn.setOnFocusChangeListener((v, hasFocus) -> {
-            v.animate().scaleX(hasFocus ? 1.05f : 1.0f).scaleY(hasFocus ? 1.05f : 1.0f).setDuration(150).start();
-            if (hasFocus) {
-                GradientDrawable focusBg = new GradientDrawable();
-                focusBg.setColor(Color.parseColor("#881c3127"));
-                focusBg.setCornerRadius(dp(12));
-                focusBg.setStroke(dp(1), GhibliTheme.COLOR_ACCENT);
-                v.setBackground(focusBg);
-            } else {
-                v.setBackground(null);
-            }
-        });
-        brandBtn.setOnClickListener(v -> {
-            audioController.playUiSound();
-            restoreHomeFocus();
-        });
-        bar.addView(brandBtn);
+        brandHeader.addView(brandCopy);
+        bar.addView(brandHeader);
 
         View spacer = new View(this);
         bar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1.0f));
@@ -564,47 +543,56 @@ public class MainActivity extends Activity {
         View firstCard = dockView != null ? dockView.getFirstCard() : null;
         View archiveCard = dockView != null ? dockView.getArchiveCard() : null;
 
+        if (sceneChoiceBtn != null && sceneChoiceBtn.getId() == View.NO_ID) sceneChoiceBtn.setId(View.generateViewId());
+        if (gameBtn != null && gameBtn.getId() == View.NO_ID) gameBtn.setId(View.generateViewId());
+        if (settingsBtn != null && settingsBtn.getId() == View.NO_ID) settingsBtn.setId(View.generateViewId());
+        if (spiritBtn != null && spiritBtn.getId() == View.NO_ID) spiritBtn.setId(View.generateViewId());
+        if (firstCard != null && firstCard.getId() == View.NO_ID) firstCard.setId(View.generateViewId());
+        if (archiveCard != null && archiveCard.getId() == View.NO_ID) archiveCard.setId(View.generateViewId());
+
         if (sceneChoiceBtn != null) {
-            if (sceneChoiceBtn.getId() == View.NO_ID) sceneChoiceBtn.setId(View.generateViewId());
+            sceneChoiceBtn.setNextFocusLeftId(sceneChoiceBtn.getId());
             if (firstCard != null) {
-                if (firstCard.getId() == View.NO_ID) firstCard.setId(View.generateViewId());
                 firstCard.setNextFocusUpId(sceneChoiceBtn.getId());
                 firstCard.setNextFocusLeftId(firstCard.getId());
                 sceneChoiceBtn.setNextFocusDownId(firstCard.getId());
             }
-            if (brandBtn != null) {
-                if (brandBtn.getId() == View.NO_ID) brandBtn.setId(View.generateViewId());
-                sceneChoiceBtn.setNextFocusUpId(brandBtn.getId());
-                brandBtn.setNextFocusDownId(sceneChoiceBtn.getId());
+            if (gameBtn != null) {
+                sceneChoiceBtn.setNextFocusUpId(gameBtn.getId());
+                gameBtn.setNextFocusLeftId(sceneChoiceBtn.getId());
+            } else {
+                sceneChoiceBtn.setNextFocusUpId(sceneChoiceBtn.getId());
+            }
+            if (spiritBtn != null) {
+                sceneChoiceBtn.setNextFocusRightId(spiritBtn.getId());
+                spiritBtn.setNextFocusLeftId(sceneChoiceBtn.getId());
             }
         }
 
-        if (brandBtn != null && gameBtn != null) {
-            if (brandBtn.getId() == View.NO_ID) brandBtn.setId(View.generateViewId());
-            if (gameBtn.getId() == View.NO_ID) gameBtn.setId(View.generateViewId());
-            brandBtn.setNextFocusRightId(gameBtn.getId());
-            gameBtn.setNextFocusLeftId(brandBtn.getId());
+        if (gameBtn != null) {
+            gameBtn.setNextFocusUpId(gameBtn.getId());
         }
 
         if (gameBtn != null && settingsBtn != null) {
-            if (gameBtn.getId() == View.NO_ID) gameBtn.setId(View.generateViewId());
-            if (settingsBtn.getId() == View.NO_ID) settingsBtn.setId(View.generateViewId());
             gameBtn.setNextFocusRightId(settingsBtn.getId());
             settingsBtn.setNextFocusLeftId(gameBtn.getId());
+            settingsBtn.setNextFocusRightId(settingsBtn.getId());
+            settingsBtn.setNextFocusUpId(settingsBtn.getId());
         }
 
         if (spiritBtn != null) {
-            if (spiritBtn.getId() == View.NO_ID) spiritBtn.setId(View.generateViewId());
+            spiritBtn.setNextFocusRightId(spiritBtn.getId());
             if (archiveCard != null) {
-                if (archiveCard.getId() == View.NO_ID) archiveCard.setId(View.generateViewId());
                 archiveCard.setNextFocusUpId(spiritBtn.getId());
                 archiveCard.setNextFocusRightId(archiveCard.getId());
                 spiritBtn.setNextFocusDownId(archiveCard.getId());
             }
             if (gameBtn != null) {
-                if (gameBtn.getId() == View.NO_ID) gameBtn.setId(View.generateViewId());
                 spiritBtn.setNextFocusUpId(gameBtn.getId());
                 gameBtn.setNextFocusDownId(spiritBtn.getId());
+            }
+            if (settingsBtn != null) {
+                settingsBtn.setNextFocusDownId(spiritBtn.getId());
             }
         }
     }
@@ -919,9 +907,9 @@ public class MainActivity extends Activity {
                         + "Твій теплий домашній екран долини:\n"
                         + "• 8 живописних краєвидів Ghibli з паралаксом і живими частинками\n"
                         + "• 6 духів навігації (Сусуватарі, Полум’я Кальцифера, Сяйво Кодама, Вітер долини, Кристал Лапути, Паперові птахи)\n"
-                        + "• Улюблені застосунки з дерев’яними медальйонами та власним порядком\n"
-                        + "• Мінігра «Політ крізь долину» з Сусуватарі та Кодама\n"
-                        + "• Авторська пентатонічна музика та звуки духів\n\n"
+                        + "• Улюблені застосунки з вільними 2D cel-іконками у стилі Studio Ghibli та власним порядком\n"
+                        + "• Мінігра «Політ крізь долину» з Сусуватарі, Кодама та Тоторо\n"
+                        + "• Оригінальні саундтреки Joe Hisaishi та натуральні звуки духів\n\n"
                         + "Права на твори Studio Ghibli належать їхнім правовласникам. Некомерційний фанатський лаунчер.")
                 .setPositiveButton("Зрозуміло", null)
                 .show();
@@ -1155,8 +1143,9 @@ public class MainActivity extends Activity {
                     closeActivePanel();
                     return true;
                 }
-                if (brandBtn != null) {
-                    brandBtn.requestFocus();
+                View firstCard = dockView != null ? dockView.getFirstCard() : null;
+                if (firstCard != null && rootLayout.findFocus() != firstCard) {
+                    firstCard.requestFocus();
                 }
                 return true;
             }

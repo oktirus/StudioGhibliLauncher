@@ -132,14 +132,37 @@ public class LauncherRegressionTest {
         ShadowChoreographer.setPaused(true);
         controller = Robolectric.buildActivity(MainActivity.class).create().start();
         MainActivity activity = controller.get();
-        View brand = field(activity, "brandBtn");
-        assertTrue(brand.requestFocusFromTouch());
+        View gameBtn = field(activity, "gameBtn");
+        assertTrue(gameBtn.requestFocusFromTouch());
         controller.resume().visible();
         drain((ExecutorService) field(field(activity, "appManager"), "executor"));
         layout(activity);
         DockView dock = field(activity, "dockView");
         assertSame(dock.getFirstCard(), focused(activity));
         assertSame(dock.getFirstCard(), field(field(activity, "spiritFocusView"), "targetView"));
+    }
+
+    @Test public void brandHeaderIsNotFocusableAndTopNavigationSkipsIt() throws Exception {
+        MainActivity activity = start();
+        View brandHeader = field(activity, "brandHeader");
+        View sceneChoiceBtn = field(activity, "sceneChoiceBtn");
+        View gameBtn = field(activity, "gameBtn");
+        View settingsBtn = field(activity, "settingsBtn");
+        DockView dock = field(activity, "dockView");
+
+        assertFalse("Brand title must not be focusable", brandHeader.isFocusable());
+        assertFalse("Brand title must not be clickable", brandHeader.isClickable());
+        assertFalse("Brand title must reject focus requests", brandHeader.requestFocus());
+
+        assertEquals(gameBtn.getId(), sceneChoiceBtn.getNextFocusUpId());
+        assertEquals(sceneChoiceBtn.getId(), gameBtn.getNextFocusLeftId());
+        assertEquals(settingsBtn.getId(), gameBtn.getNextFocusRightId());
+
+        assertTrue(gameBtn.requestFocusFromTouch());
+        assertSame(gameBtn, focused(activity));
+        activity.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK));
+        assertNotSame(brandHeader, focused(activity));
+        assertSame(dock.getFirstCard(), focused(activity));
     }
 
     @Test public void homeEntryAndDockRebuildStayQuietUntilRemoteMovesFocus() throws Exception {

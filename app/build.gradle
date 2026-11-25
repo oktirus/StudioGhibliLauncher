@@ -20,6 +20,10 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
+    androidResources {
+        noCompress += ['ogg', 'mp3', 'wav']
+    }
+
     lint {
         abortOnError true
         checkReleaseBuilds true

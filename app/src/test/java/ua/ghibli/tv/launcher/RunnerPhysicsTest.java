@@ -8,7 +8,7 @@ public class RunnerPhysicsTest {
 
     @Test
     public void testHeroWaitsForStart() {
-        for (String hero : new String[]{"soot", "kodama"}) {
+        for (String hero : new String[]{"soot", "kodama", "totoro"}) {
             RunnerPhysics r = new RunnerPhysics(hero);
             r.step(1.0);
             Assert.assertEquals(0.0, r.distance, 0.0001);
@@ -18,7 +18,7 @@ public class RunnerPhysicsTest {
 
     @Test
     public void testHeroJumpPeaksAndLandsOnce() {
-        for (String hero : new String[]{"soot", "kodama"}) {
+        for (String hero : new String[]{"soot", "kodama", "totoro"}) {
             RunnerPhysics r = new RunnerPhysics(hero);
             r.start();
             Assert.assertTrue(r.jump());
@@ -33,7 +33,7 @@ public class RunnerPhysicsTest {
 
     @Test
     public void testHeroDuckExpires() {
-        for (String hero : new String[]{"soot", "kodama"}) {
+        for (String hero : new String[]{"soot", "kodama", "totoro"}) {
             RunnerPhysics r = new RunnerPhysics(hero);
             r.start();
             double standing = r.box().h;
@@ -47,7 +47,7 @@ public class RunnerPhysicsTest {
 
     @Test
     public void testHeroPausesAllPhysics() {
-        for (String hero : new String[]{"soot", "kodama"}) {
+        for (String hero : new String[]{"soot", "kodama", "totoro"}) {
             RunnerPhysics r = new RunnerPhysics(hero);
             r.start();
             r.jump();
@@ -63,7 +63,7 @@ public class RunnerPhysicsTest {
 
     @Test
     public void testObstacleCollisionsAndAvoidance() {
-        for (String hero : new String[]{"soot", "kodama"}) {
+        for (String hero : new String[]{"soot", "kodama", "totoro"}) {
             for (double speed : new double[]{360.0, 500.0, 760.0}) {
                 for (String kind : new String[]{"stump", "stone", "paper_bird"}) {
                     double distance = (speed - 360.0) / 0.012;
@@ -105,7 +105,7 @@ public class RunnerPhysicsTest {
 
     @Test
     public void testRestartClearsAllState() {
-        for (String hero : new String[]{"soot", "kodama"}) {
+        for (String hero : new String[]{"soot", "kodama", "totoro"}) {
             RunnerPhysics r = new RunnerPhysics(hero);
             r.start();
             r.step(0.2);
@@ -120,7 +120,7 @@ public class RunnerPhysicsTest {
 
     @Test
     public void testDeterministicAtDifferentHz() {
-        for (String hero : new String[]{"soot", "kodama"}) {
+        for (String hero : new String[]{"soot", "kodama", "totoro"}) {
             RunnerPhysics r30 = simulateHz(hero, 30);
             RunnerPhysics r60 = simulateHz(hero, 60);
             RunnerPhysics r120 = simulateHz(hero, 120);

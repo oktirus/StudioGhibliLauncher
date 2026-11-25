@@ -133,7 +133,7 @@ public class SettingsPanel extends FrameLayout {
 
         // 5. Ambient Music Switch
         musicSwitch = new GhibliSwitch(context);
-        content.addView(createSwitchRow("Музика долини", "Атмосферні мелодії долини (скринька, калімба, флейта).",
+        content.addView(createSwitchRow("Музика долини", "Оригінальні мелодії з аніме Studio Ghibli (Тоторо, Привиди, Замок Хаула).",
                 musicSwitch, prefs.isAmbienceEnabled(), (sw, checked) -> {
                     prefs.setAmbienceEnabled(checked);
                     audioController.updateMusic();
@@ -153,7 +153,7 @@ public class SettingsPanel extends FrameLayout {
         // 7. Music Track selector
         Spinner musicSpinner = createStyledSpinner(context);
         setupMusicSpinner(musicSpinner);
-        content.addView(createSpinnerRow("Мелодія фону", "Авторські пентатонічні композиції долини Ghibli", musicSpinner));
+        content.addView(createSpinnerRow("Мелодія фону", "Саундтреки Joe Hisaishi з фільмів Studio Ghibli.", musicSpinner));
 
         // 8. Music Volume
         int currentMusicVol = (int) (prefs.getMusicVolume() * 100);

@@ -222,8 +222,10 @@ public class SpiritRenderer {
         state.startTime = now;
         state.landTime = 0L;
         double dist = Math.hypot(toX - state.currentPos.x, toY - state.currentPos.y);
-        state.duration = (long) Math.min(640, Math.max(340, dist * 1.35));
-        state.direction = toX >= state.currentPos.x ? 1 : -1;
+        state.duration = (long) Math.min(580, Math.max(300, dist * 1.15));
+        if (Math.abs(toX - state.currentPos.x) > 4f) {
+            state.direction = toX >= state.currentPos.x ? 1 : -1;
+        }
         state.isJumping = true;
     }
 
@@ -272,10 +274,15 @@ public class SpiritRenderer {
 
         float drawX = restX;
         float drawY = restY;
+        float shadowX = restX;
+        float shadowY = restY;
+        float shadowScale = 1f;
+        int shadowAlpha = 0x45;
         boolean jumping = false;
-        int dir = 1;
+        int dir = (state != null && state.direction < 0 && !isPreview) ? -1 : 1;
         float scaleX = 1f;
         float scaleY = 1f;
+        float tiltDeg = 0f;
 
         if (!isPreview && state != null && state.isJumping) {
             float progress = Math.min(1f, (float) (now - state.startTime) / Math.max(1L, state.duration));
@@ -283,44 +290,78 @@ public class SpiritRenderer {
                 state.isJumping = false;
                 state.landTime = now;
                 state.currentPos.set(restX, restY);
+                drawX = restX;
+                drawY = restY;
+                shadowX = restX;
+                shadowY = restY;
             } else {
                 jumping = true;
-                dir = state.direction;
-                float ease = 1f - (1f - progress) * (1f - progress);
-                drawX = state.fromPos.x + (state.toPos.x - state.fromPos.x) * ease;
-                float arc = (float) Math.sin(progress * Math.PI) * r * 1.15f;
-                drawY = state.fromPos.y + (state.toPos.y - state.fromPos.y) * ease - arc;
+                dir = state.direction >= 0 ? 1 : -1;
+                float ease = 1f - (float) Math.pow(1f - progress, 2.1);
+                float baseX = state.fromPos.x + (state.toPos.x - state.fromPos.x) * ease;
+                float baseY = state.fromPos.y + (state.toPos.y - state.fromPos.y) * ease;
+                float dist = (float) Math.hypot(state.toPos.x - state.fromPos.x, state.toPos.y - state.fromPos.y);
+                float arcHeight = Math.min(r * 1.32f, Math.max(r * 0.62f, dist * 0.26f));
+                float arcPhase = (float) Math.sin(progress * Math.PI);
+                drawX = baseX;
+                drawY = baseY - arcPhase * arcHeight;
+                shadowX = baseX;
+                shadowY = baseY;
+                shadowScale = 1f - 0.42f * arcPhase;
+                shadowAlpha = Math.max(18, Math.round(0x45 * (1f - 0.58f * arcPhase)));
                 state.currentPos.set(drawX, drawY);
-                scaleX = 1.08f;
-                scaleY = 0.94f;
+
+                // Smooth takeoff stretch -> mid-air poise -> gentle descent pitch
+                if (progress < 0.22f) {
+                    float k = (float) Math.sin((progress / 0.22f) * Math.PI);
+                    scaleX = 1f - 0.05f * k;
+                    scaleY = 1f + 0.07f * k;
+                } else {
+                    scaleX = 1.04f;
+                    scaleY = 0.97f;
+                }
+                tiltDeg = (float) (-Math.cos(progress * Math.PI) * 11.0);
             }
         } else if (state != null) {
             state.currentPos.set(restX, restY);
-            // Gentle squash on landing
-            if (!isPreview && state.landTime > 0 && now - state.landTime < 220) {
-                float p = (now - state.landTime) / 220f;
-                float bounce = (float) Math.sin(p * Math.PI) * 0.14f;
+            // Soft damped landing squash-and-stretch
+            if (!isPreview && state.landTime > 0 && now - state.landTime < 240) {
+                float p = (now - state.landTime) / 240f;
+                float bounce = (float) (Math.sin(p * Math.PI) * Math.exp(-p * 1.4) * 0.14);
                 scaleX = 1f + bounce;
                 scaleY = 1f - bounce;
+            } else if (!isPreview) {
+                // Gentle idle breathing synchronized with hover bob
+                float breath = (float) Math.sin(t * 2.8);
+                scaleX = 1f + breath * 0.018f;
+                scaleY = 1f - breath * 0.018f;
             }
-            float bob = isPreview ? 0f : (float) (Math.sin(t * 3.1) * dp(3.0f));
+            float bob = isPreview ? 0f : (float) (Math.sin(t * 2.8) * dp(2.4f));
             drawY = restY + bob;
+            shadowY = restY;
+            shadowScale = isPreview ? 1f : (1f - (bob / Math.max(1f, dp(24f))));
         }
 
         Bitmap bmp = jumping ? ensureBitmap("soot-jump") : ensureBitmap("soot-idle");
         if (bmp == null) bmp = ensureBitmap("soot-idle");
 
-        float spriteSize = r * (jumping ? 1.52f : 1.44f);
-        // Subtle shadow beneath soot sprite using dedicated shadowPaint (never pollutes sprite paint alpha)
-        shadowPaint.setColor(0x450b1611);
-        tempOval.set(drawX - spriteSize * 0.28f, drawY + spriteSize * 0.28f,
-                drawX + spriteSize * 0.28f, drawY + spriteSize * 0.42f);
+        // Unified sprite size so idle and jump bodies match seamlessly with zero size pop
+        float spriteSize = r * 1.48f;
+        // Grounded shadow beneath soot sprite using dedicated shadowPaint
+        shadowPaint.setColor((shadowAlpha << 24) | 0x0b1611);
+        float shRx = spriteSize * 0.26f * shadowScale;
+        float shRy = spriteSize * 0.065f * shadowScale;
+        tempOval.set(shadowX - shRx, shadowY + spriteSize * 0.34f - shRy,
+                shadowX + shRx, shadowY + spriteSize * 0.34f + shRy);
         canvas.drawOval(tempOval, shadowPaint);
 
         if (bmp != null && !bmp.isRecycled()) {
             canvas.save();
             canvas.translate(drawX, drawY);
             canvas.scale(dir * scaleX, scaleY);
+            if (tiltDeg != 0f) {
+                canvas.rotate(tiltDeg);
+            }
             paint.setAlpha(255);
             dstRect.set(-spriteSize / 2f, -spriteSize / 2f, spriteSize / 2f, spriteSize / 2f);
             canvas.drawBitmap(bmp, null, dstRect, paint);

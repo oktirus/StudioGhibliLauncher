@@ -87,9 +87,9 @@ public class CatalogData {
     );
 
     public static final List<MusicTrack> MUSIC_TRACKS = Arrays.asList(
-        new MusicTrack("meadow_morning", "Ранкова долина (скринька)", "audio/music-meadow_morning.wav"),
-        new MusicTrack("lantern_dusk", "Вогні сутінків (калімба)", "audio/music-lantern_dusk.wav"),
-        new MusicTrack("sky_garden", "Небесний сад (флейта)", "audio/music-sky_garden.wav")
+        new MusicTrack("meadow_morning", "Шлях вітру · Тоторо", "audio/music-meadow_morning.ogg"),
+        new MusicTrack("lantern_dusk", "Один літній день · Привиди", "audio/music-lantern_dusk.ogg"),
+        new MusicTrack("sky_garden", "Карусель життя · Замок Хаула", "audio/music-sky_garden.ogg")
     );
 
     public static final List<HighlightSound> HIGHLIGHT_SOUNDS = Arrays.asList(

@@ -7,7 +7,7 @@ import java.util.Random;
 
 /**
  * Deterministic physics engine for the Studio Ghibli "Політ крізь долину" runner.
- * Heroes: Soot Sprite ("soot") and Kodama ("kodama").
+ * Heroes: Soot Sprite ("soot"), Kodama ("kodama"), and Totoro ("totoro").
  * Obstacles: mossy stump ("stump"), carved lantern post ("stone"), gliding origami bird ("paper_bird").
  */
 public class RunnerPhysics {
@@ -31,6 +31,7 @@ public class RunnerPhysics {
 
     public static final HeroDef HERO_SOOT = new HeroDef("Сусуватарі", "Маленькі лапки долають велику дорогу.", 56.0, 74.0);
     public static final HeroDef HERO_KODAMA = new HeroDef("Кодама", "Шепіт пралісу веде вперед.", 64.0, 78.0);
+    public static final HeroDef HERO_TOTORO = new HeroDef("Тоторо", "Велике серце й легкі кроки лісу.", 64.0, 78.0);
 
     public static class Rect {
         public double x, y, w, h;
@@ -73,7 +74,8 @@ public class RunnerPhysics {
     }
 
     public static Pose poseFor(RunnerPhysics run) {
-        double rate = ("kodama".equals(run.hero) ? 6.8 : 10.6) * Math.sqrt(run.speed / 360.0);
+        double baseRate = "kodama".equals(run.hero) ? 7.6 : "totoro".equals(run.hero) ? 8.8 : 10.6;
+        double rate = baseRate * Math.sqrt(run.speed / 360.0);
         if (run.y > 1.0) {
             return new Pose(4, "jump", 0.0);
         }
@@ -85,9 +87,11 @@ public class RunnerPhysics {
         if ("running".equals(run.status) || "paused".equals(run.status)) {
             int frame = (int) (Math.floor(run.elapsed * rate) % 4);
             if (frame < 0) frame = (frame % 4 + 4) % 4;
-            double[] hops = "kodama".equals(run.hero)
-                    ? new double[]{0.0, -4.0, -10.0, -2.0}
-                    : new double[]{0.0, -5.0, -8.0, -3.0};
+            double[] hops = "totoro".equals(run.hero)
+                    ? new double[]{0.0, -6.5, 0.0, -6.5}
+                    : "kodama".equals(run.hero)
+                    ? new double[]{0.0, -6.0, 0.0, -6.0}
+                    : new double[]{0.0, -7.0, 0.0, -7.0};
             return new Pose(frame, "run", hops[frame]);
         }
         return new Pose(5, "idle", 0.0);
@@ -126,15 +130,17 @@ public class RunnerPhysics {
     }
 
     public void setHero(String hero) {
-        if ("kodama".equals(hero)) {
-            this.hero = "kodama";
+        if ("kodama".equals(hero) || "totoro".equals(hero)) {
+            this.hero = hero;
         } else {
             this.hero = "soot";
         }
     }
 
     public HeroDef getHeroDef() {
-        return "kodama".equals(hero) ? HERO_KODAMA : HERO_SOOT;
+        if ("kodama".equals(hero)) return HERO_KODAMA;
+        if ("totoro".equals(hero)) return HERO_TOTORO;
+        return HERO_SOOT;
     }
 
     public void reset() {

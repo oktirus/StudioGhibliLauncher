@@ -25,7 +25,7 @@ import java.util.function.Consumer;
 /**
  * Studio Ghibli Valley Runner ("Політ крізь долину").
  * Fixed 1280x540 virtual stage with honey-gold wooden border, Caveat state banners,
- * Soot Sprite & Kodama heroes, mossy stumps, stone lanterns, and origami paper birds.
+ * Soot Sprite, Kodama & Totoro heroes, mossy stumps, stone lanterns, and origami paper birds.
  */
 public class ValleyRunnerView extends View {
     private final PreferencesManager prefs;
@@ -41,9 +41,13 @@ public class ValleyRunnerView extends View {
     private volatile long bitmapGeneration;
     private volatile boolean disposed;
     private final Path birdPath = new Path();
+    private final Path stageClipPath = new Path();
+    private final Rect srcRect = new Rect();
+    private final RectF dstRect = new RectF();
     private final RectF stageRect = new RectF();
     private final RectF sootTab = new RectF();
     private final RectF kodamaTab = new RectF();
+    private final RectF totoroTab = new RectF();
     private final RectF pauseButton = new RectF();
     private final RectF closeButton = new RectF();
     private final RectF slideButton = new RectF();
@@ -54,6 +58,7 @@ public class ValleyRunnerView extends View {
     private Runnable onStopSounds;
 
     private long lastTime = 0;
+    private double landSquash = 0.0;
     private boolean isPausedByLifecycle = false;
 
     private final Runnable tickRunnable = new Runnable() {
@@ -66,6 +71,10 @@ public class ValleyRunnerView extends View {
                 if (dt > 0.05) dt = 0.05;
                 lastTime = now;
 
+                if (landSquash > 0.0) {
+                    landSquash = Math.max(0.0, landSquash - dt);
+                }
+
                 boolean airborne = runner.y > 0.0;
                 int clearedBefore = runner.cleared;
                 runner.step(dt);
@@ -74,7 +83,10 @@ public class ValleyRunnerView extends View {
                     stopSounds();
                     playSound(RunnerCue.HIT);
                 } else {
-                    if (airborne && runner.y == 0.0) playSound(RunnerCue.LAND);
+                    if (airborne && runner.y == 0.0) {
+                        landSquash = 0.14;
+                        playSound(RunnerCue.LAND);
+                    }
                     if (runner.cleared > clearedBefore) playSound(RunnerCue.CLEAR);
                 }
                 invalidate();
@@ -87,7 +99,7 @@ public class ValleyRunnerView extends View {
         super(context);
         this.prefs = prefs;
         String hero = prefs.getRunnerHero();
-        if (!"kodama".equals(hero)) hero = "soot";
+        if (!"kodama".equals(hero) && !"totoro".equals(hero)) hero = "soot";
         this.runner = new RunnerPhysics(hero);
         setFocusable(true);
         setFocusableInTouchMode(true);
@@ -119,6 +131,11 @@ public class ValleyRunnerView extends View {
 
     private void loadBitmaps() {
         loadBitmapAsync("valley", "game/ghibli-valley.webp");
+        loadBitmapAsync("ground", "game/ghibli-ground.webp");
+        loadBitmapAsync("obs-stump", "game/obs-stump.webp");
+        loadBitmapAsync("obs-stone", "game/obs-stone.webp");
+        loadBitmapAsync("obs-bird-up", "game/obs-bird-up.webp");
+        loadBitmapAsync("obs-bird-down", "game/obs-bird-down.webp");
         loadHeroBitmaps(runner.hero);
     }
 
@@ -135,7 +152,7 @@ public class ValleyRunnerView extends View {
     }
 
     private void loadBitmapAsync(final String key, final String assetPath) {
-        if (disposed || bitmaps.containsKey(key)) return;
+        if (disposed || bitmapExecutor.isShutdown() || bitmaps.containsKey(key)) return;
         synchronized (pendingBitmaps) {
             if (!pendingBitmaps.add(key)) return;
         }
@@ -211,13 +228,15 @@ public class ValleyRunnerView extends View {
 
     public void setHero(String hero) {
         saveBestScore();
-        if (!"kodama".equals(hero)) hero = "soot";
+        if (!"kodama".equals(hero) && !"totoro".equals(hero)) hero = "soot";
         if (hero.equals(runner.hero)) return;
         stopSounds();
         String oldHero = runner.hero;
         bitmapGeneration++;
         bitmapExecutor.getQueue().clear();
-        pendingBitmaps.clear();
+        synchronized (pendingBitmaps) {
+            pendingBitmaps.clear();
+        }
         runner.setHero(hero);
         runner.reset();
         unloadHeroBitmaps(oldHero);
@@ -226,8 +245,21 @@ public class ValleyRunnerView extends View {
         invalidate();
     }
 
+    public void cycleHero(int delta) {
+        String[] order = new String[]{"soot", "kodama", "totoro"};
+        int idx = 0;
+        for (int i = 0; i < order.length; i++) {
+            if (order[i].equals(runner.hero)) {
+                idx = i;
+                break;
+            }
+        }
+        int next = (idx + delta + order.length) % order.length;
+        setHero(order[next]);
+    }
+
     public void toggleHero() {
-        setHero("soot".equals(runner.hero) ? "kodama" : "soot");
+        cycleHero(1);
     }
 
     private void saveBestScore() {
@@ -267,7 +299,9 @@ public class ValleyRunnerView extends View {
     private void clearCache() {
         bitmapGeneration++;
         bitmapExecutor.getQueue().clear();
-        pendingBitmaps.clear();
+        synchronized (pendingBitmaps) {
+            pendingBitmaps.clear();
+        }
         removeCallbacks(tickRunnable);
         for (Bitmap bmp : bitmaps.values()) {
             if (bmp != null && !bmp.isRecycled()) bmp.recycle();
@@ -297,7 +331,7 @@ public class ValleyRunnerView extends View {
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
             if ("ready".equals(runner.status) || "over".equals(runner.status)) {
-                toggleHero();
+                cycleHero(keyCode == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
                 return true;
             }
         }
@@ -326,6 +360,8 @@ public class ValleyRunnerView extends View {
                 GhibliTheme.dp(getContext(), 132), tabBottom);
         kodamaTab.set(GhibliTheme.dp(getContext(), 140), tabY,
                 GhibliTheme.dp(getContext(), 236), tabBottom);
+        totoroTab.set(GhibliTheme.dp(getContext(), 244), tabY,
+                GhibliTheme.dp(getContext(), 340), tabBottom);
         pauseButton.set(w - GhibliTheme.dp(getContext(), 106), tabY,
                 w - GhibliTheme.dp(getContext(), 26), tabBottom);
         closeButton.set(w - GhibliTheme.dp(getContext(), 36), GhibliTheme.dp(getContext(), 4),
@@ -355,9 +391,10 @@ public class ValleyRunnerView extends View {
                 if (onExitListener != null) onExitListener.run();
             } else if (pauseButton.contains(x, y)) {
                 togglePause();
-            } else if (sootTab.contains(x, y) || kodamaTab.contains(x, y)) {
+            } else if (sootTab.contains(x, y) || kodamaTab.contains(x, y) || totoroTab.contains(x, y)) {
                 if ("ready".equals(runner.status) || "over".equals(runner.status)) {
-                    setHero(sootTab.contains(x, y) ? "soot" : "kodama");
+                    String picked = sootTab.contains(x, y) ? "soot" : kodamaTab.contains(x, y) ? "kodama" : "totoro";
+                    setHero(picked);
                 }
             } else if (slideButton.contains(x, y)) {
                 crouch();
@@ -378,7 +415,7 @@ public class ValleyRunnerView extends View {
     @Override
     public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
         super.onInitializeAccessibilityNodeInfo(info);
-        info.setContentDescription("Політ крізь долину · " + ("soot".equals(runner.hero) ? "Сусуватарі" : "Кодама"));
+        info.setContentDescription("Політ крізь долину · " + runner.getHeroDef().name);
         info.addAction(new AccessibilityNodeInfo.AccessibilityAction(R.id.runner_jump, "Стрибок"));
         info.addAction(new AccessibilityNodeInfo.AccessibilityAction(R.id.runner_slide, "Присідання"));
         info.addAction(new AccessibilityNodeInfo.AccessibilityAction(R.id.runner_pause,
@@ -434,10 +471,10 @@ public class ValleyRunnerView extends View {
         stageRect.set(stageLeft, stageTop, stageLeft + stageW, stageTop + stageH);
 
         canvas.save();
-        Path clip = new Path();
+        stageClipPath.reset();
         float corner = GhibliTheme.dp(getContext(), 12);
-        clip.addRoundRect(stageRect, corner, corner, Path.Direction.CW);
-        canvas.clipPath(clip);
+        stageClipPath.addRoundRect(stageRect, corner, corner, Path.Direction.CW);
+        canvas.clipPath(stageClipPath);
         canvas.translate(stageLeft, stageTop);
         float scale = stageW / (float) RunnerPhysics.W;
         canvas.scale(scale, scale);
@@ -464,23 +501,26 @@ public class ValleyRunnerView extends View {
         canvas.drawText("Політ крізь долину", GhibliTheme.dp(getContext(), 24), GhibliTheme.dp(getContext(), 40), paint);
 
         boolean isSoot = "soot".equals(runner.hero);
+        boolean isKodama = "kodama".equals(runner.hero);
+        boolean isTotoro = "totoro".equals(runner.hero);
         float tabY = GhibliTheme.dp(getContext(), 52);
 
         drawHeroTab(canvas, sootTab.left, sootTab.top, sootTab.width(), sootTab.height(), "Сусуватарі", isSoot);
-        drawHeroTab(canvas, kodamaTab.left, kodamaTab.top, kodamaTab.width(), kodamaTab.height(), "Кодама", !isSoot);
+        drawHeroTab(canvas, kodamaTab.left, kodamaTab.top, kodamaTab.width(), kodamaTab.height(), "Кодама", isKodama);
+        drawHeroTab(canvas, totoroTab.left, totoroTab.top, totoroTab.width(), totoroTab.height(), "Тоторо", isTotoro);
 
         paint.setTypeface(GhibliTheme.getNunitoBold(getContext()));
         paint.setTextSize(GhibliTheme.dp(getContext(), 11));
         paint.setColor(GhibliTheme.COLOR_MUTED);
-        canvas.drawText("Відстань", w - GhibliTheme.dp(getContext(), 330), tabY + 8, paint);
-        canvas.drawText("Рекорд", w - GhibliTheme.dp(getContext(), 210), tabY + 8, paint);
+        canvas.drawText("Відстань", w - GhibliTheme.dp(getContext(), 330), tabY + GhibliTheme.dp(getContext(), 7), paint);
+        canvas.drawText("Рекорд", w - GhibliTheme.dp(getContext(), 210), tabY + GhibliTheme.dp(getContext(), 7), paint);
 
         paint.setTextSize(GhibliTheme.dp(getContext(), 18));
         paint.setColor(GhibliTheme.COLOR_PAPER);
         String scoreStr = String.format(java.util.Locale.ROOT, "%05d", runner.getScore());
         String bestStr = String.format(java.util.Locale.ROOT, "%05d", Math.max(runner.getScore(), prefs.getRunnerBest(runner.hero)));
-        canvas.drawText(scoreStr, w - GhibliTheme.dp(getContext(), 330), tabY + 26, paint);
-        canvas.drawText(bestStr, w - GhibliTheme.dp(getContext(), 210), tabY + 26, paint);
+        canvas.drawText(scoreStr, w - GhibliTheme.dp(getContext(), 330), tabY + GhibliTheme.dp(getContext(), 26), paint);
+        canvas.drawText(bestStr, w - GhibliTheme.dp(getContext(), 210), tabY + GhibliTheme.dp(getContext(), 26), paint);
 
         drawPillButton(canvas, pauseButton.left, pauseButton.top, pauseButton.width(), pauseButton.height(),
                 "running".equals(runner.status) ? "⏸ Пауза" : "▶ Старт");
@@ -539,8 +579,23 @@ public class ValleyRunnerView extends View {
         paint.reset();
         paint.setAntiAlias(true);
 
-        paint.setColor(Color.parseColor("#b313211b"));
+        // Soft sunlit-friendly veil so the Ghibli valley, wildflower trail, and hero remain lively
+        paint.setColor(Color.parseColor("#4a122019"));
         canvas.drawRect(0, 0, (float) RunnerPhysics.W, (float) RunnerPhysics.H, paint);
+
+        // Centered storybook parchment-forest plaque for crisp contrast on TV
+        float cardW = 580f;
+        float cardH = 292f;
+        float cardX = ((float) RunnerPhysics.W - cardW) / 2f;
+        float cardY = 122f;
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(Color.parseColor("#b814241c"));
+        canvas.drawRoundRect(cardX, cardY, cardX + cardW, cardY + cardH, 22f, 22f, paint);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(2f);
+        paint.setColor(Color.parseColor("#99e8b858"));
+        canvas.drawRoundRect(cardX, cardY, cardX + cardW, cardY + cardH, 22f, 22f, paint);
+        paint.setStyle(Paint.Style.FILL);
 
         String subtitle;
         String title;
@@ -569,13 +624,13 @@ public class ValleyRunnerView extends View {
         paint.setColor(GhibliTheme.COLOR_GOLD);
         paint.setTextSize(17f);
         paint.setTextAlign(Paint.Align.CENTER);
-        canvas.drawText(subtitle, (float) RunnerPhysics.W / 2f, 185f, paint);
+        canvas.drawText(subtitle, (float) RunnerPhysics.W / 2f, 166f, paint);
 
         paint.setTypeface(GhibliTheme.getCaveatBold(getContext()));
         paint.setColor(GhibliTheme.COLOR_PAPER);
-        paint.setTextSize(68f);
-        paint.setShadowLayer(18f, 0, 4f, Color.parseColor("#99000000"));
-        canvas.drawText(title, (float) RunnerPhysics.W / 2f, 260f, paint);
+        paint.setTextSize(66f);
+        paint.setShadowLayer(16f, 0, 3f, Color.parseColor("#99000000"));
+        canvas.drawText(title, (float) RunnerPhysics.W / 2f, 236f, paint);
 
         paint.clearShadowLayer();
         paint.setTypeface(GhibliTheme.getNunito(getContext()));
@@ -583,13 +638,13 @@ public class ValleyRunnerView extends View {
         paint.setTextSize(15f);
         String[] lines = desc.split("\n");
         for (int i = 0; i < lines.length; i++) {
-            canvas.drawText(lines[i], (float) RunnerPhysics.W / 2f, 310f + i * 24f, paint);
+            canvas.drawText(lines[i], (float) RunnerPhysics.W / 2f, 282f + i * 24f, paint);
         }
 
-        float btnW = 200f;
+        float btnW = 216f;
         float btnH = 46f;
         float btnX = ((float) RunnerPhysics.W - btnW) / 2f;
-        float btnY = 375f;
+        float btnY = 342f;
 
         paint.setColor(GhibliTheme.COLOR_ACCENT);
         paint.setStyle(Paint.Style.FILL);
@@ -614,106 +669,185 @@ public class ValleyRunnerView extends View {
     }
 
     private void renderGameContent(Canvas canvas) {
-        // 1. Parallax scrolling Ghibli valley panorama
+        paint.reset();
+        paint.setAntiAlias(true);
+        paint.setFilterBitmap(true);
+
+        // 1. Seamless parallax Studio Ghibli alpine valley panorama (cosine-blended, zero mirroring)
         Bitmap bg = bitmaps.get("valley");
         if (bg != null && !bg.isRecycled()) {
-            float scroll = (float) ((runner.distance * 0.28) % RunnerPhysics.W);
-            RectF dst1 = new RectF(-scroll, 0, (float) RunnerPhysics.W - scroll, (float) RunnerPhysics.GROUND + 16);
-            RectF dst2 = new RectF((float) RunnerPhysics.W - scroll, 0, (float) RunnerPhysics.W * 2f - scroll, (float) RunnerPhysics.GROUND + 16);
-            canvas.drawBitmap(bg, null, dst1, paint);
-            canvas.drawBitmap(bg, null, dst2, paint);
+            float bgH = (float) RunnerPhysics.GROUND + 16f;
+            float bgW = bgH * ((float) bg.getWidth() / Math.max(1f, (float) bg.getHeight()));
+            float scroll = (float) ((runner.distance * 0.22) % bgW);
+            dstRect.set(-scroll, 0f, bgW - scroll, bgH);
+            canvas.drawBitmap(bg, null, dstRect, paint);
+            dstRect.set(bgW - scroll - 1.5f, 0f, bgW * 2f - scroll - 1.5f, bgH);
+            canvas.drawBitmap(bg, null, dstRect, paint);
         } else {
-            paint.setColor(Color.parseColor("#355243"));
+            paint.setColor(Color.parseColor("#5c9bc4"));
             canvas.drawRect(0, 0, (float) RunnerPhysics.W, (float) RunnerPhysics.H, paint);
         }
 
-        // 2. Meadow earth trail + grassy rim
+        // 2. Drifting valley wind dandelion spores & flower petals
         paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.parseColor("#7a5e3c"));
-        canvas.drawRect(0, (float) RunnerPhysics.GROUND, (float) RunnerPhysics.W, (float) RunnerPhysics.H, paint);
-        paint.setColor(Color.parseColor("#6ea662"));
-        canvas.drawRect(0, (float) RunnerPhysics.GROUND - 3, (float) RunnerPhysics.W, (float) RunnerPhysics.GROUND + 7, paint);
-        paint.setColor(Color.parseColor("#b9d89c"));
-        canvas.drawRect(0, (float) RunnerPhysics.GROUND - 3, (float) RunnerPhysics.W, (float) RunnerPhysics.GROUND, paint);
-
-        // Meadow pebbles & grass tufts
-        paint.setColor(Color.parseColor("#4a3a26"));
-        paint.setAlpha(110);
-        double d = runner.distance;
-        for (int k = 0; k < 36; k++) {
-            float x = (float) (((k * 93 - d * 1.02) % RunnerPhysics.W + RunnerPhysics.W) % RunnerPhysics.W);
-            float y = (float) (RunnerPhysics.GROUND + 16 + (k % 4) * 20);
-            canvas.drawRoundRect(x, y, x + 15, y + 4, 2f, 2f, paint);
+        for (int k = 0; k < 10; k++) {
+            double speedFactor = 0.36 + (k % 3) * 0.14;
+            float px = (float) (((k * 167.0 - runner.distance * speedFactor - runner.elapsed * (18.0 + k * 3.0))
+                    % RunnerPhysics.W + RunnerPhysics.W) % RunnerPhysics.W);
+            float py = (float) (58.0 + (k * 37) % 280 + Math.sin(runner.elapsed * (1.6 + (k % 3) * 0.4) + k * 1.9) * 14.0);
+            paint.setColor(k % 3 == 0 ? Color.parseColor("#fff6d4") : Color.parseColor("#ffffff"));
+            paint.setAlpha(125 + (k % 3) * 32);
+            float rad = 2.0f + (k % 3) * 1.1f;
+            canvas.drawCircle(px, py, rad, paint);
         }
         paint.setAlpha(255);
 
-        // 3. Obstacles
+        // 3. Seamless hand-painted Studio Ghibli meadow ground strip (cutout grass/flowers + sunlit trail + soil)
+        Bitmap groundBmp = bitmaps.get("ground");
+        if (groundBmp != null && !groundBmp.isRecycled()) {
+            float gW = (float) RunnerPhysics.W;
+            float gTop = (float) RunnerPhysics.GROUND - 44f;
+            float gBot = (float) RunnerPhysics.H;
+            float gScroll = (float) (runner.distance % gW);
+            dstRect.set(-gScroll, gTop, gW - gScroll, gBot);
+            canvas.drawBitmap(groundBmp, null, dstRect, paint);
+            dstRect.set(gW - gScroll - 1.5f, gTop, gW * 2f - gScroll - 1.5f, gBot);
+            canvas.drawBitmap(groundBmp, null, dstRect, paint);
+        } else {
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.parseColor("#7a5e3c"));
+            canvas.drawRect(0, (float) RunnerPhysics.GROUND, (float) RunnerPhysics.W, (float) RunnerPhysics.H, paint);
+            paint.setColor(Color.parseColor("#6ea662"));
+            canvas.drawRect(0, (float) RunnerPhysics.GROUND - 4, (float) RunnerPhysics.W, (float) RunnerPhysics.GROUND + 8, paint);
+        }
+
+        // 4. Obstacles
         for (RunnerPhysics.Obstacle o : runner.obstacles) {
             renderObstacle(canvas, o);
         }
 
-        // 4. Hero shadow
+        // 5. Dynamic altitude-scaled hero contact shadow on the sunlit trail
         boolean isKodama = "kodama".equals(runner.hero);
-        paint.setColor(Color.parseColor("#13211b"));
-        paint.setAlpha(75);
-        float shadowW = isKodama ? 40f : 36f;
-        canvas.drawOval(new RectF(214 - shadowW, (float) RunnerPhysics.GROUND - 3, 214 + shadowW, (float) RunnerPhysics.GROUND + 11), paint);
+        boolean isTotoro = "totoro".equals(runner.hero);
+        float airFactor = Math.max(0f, Math.min(1f, (float) (runner.y / 180.0)));
+        float shadowScale = 1f - airFactor * 0.52f;
+        float shadowW = (isTotoro ? 44f : isKodama ? 36f : 34f) * shadowScale;
+        float shadowH = (isTotoro ? 10f : 8.5f) * shadowScale;
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(Color.parseColor("#241c14"));
+        paint.setAlpha((int) (96f * (1f - airFactor * 0.62f)));
+        dstRect.set(214f - shadowW, (float) RunnerPhysics.GROUND - shadowH * 0.35f,
+                214f + shadowW, (float) RunnerPhysics.GROUND + shadowH);
+        canvas.drawOval(dstRect, paint);
         paint.setAlpha(255);
 
-        // 5. Hero sprite (handles both single 256x256 sprites and multi-frame sheets cleanly)
+        // 6. Hero sprite (6-frame hand-drawn 1990s Ghibli cel animation strip + 2-frame crouch strip)
         RunnerPhysics.Pose pose = RunnerPhysics.poseFor(runner);
         boolean isSlide = "slide".equals(pose.mode);
         String bmpKey = runner.hero + (isSlide ? "-slide" : "-motion");
         Bitmap heroBmp = bitmaps.get(bmpKey);
 
         if (heroBmp != null && !heroBmp.isRecycled()) {
-            float drawW = isKodama ? 104f : 96f;
-            float drawH = isSlide ? drawW * 0.72f : drawW;
+            int bw = heroBmp.getWidth();
+            int bh = heroBmp.getHeight();
+            if (bw >= bh * 2 && bh > 0) {
+                int frameCount = Math.max(1, bw / bh);
+                int frameW = bw / frameCount;
+                int frameIdx = isSlide
+                        ? ((pose.frame % frameCount) + frameCount) % frameCount
+                        : Math.max(0, Math.min(frameCount - 1, pose.frame));
+                srcRect.set(frameIdx * frameW, 0, (frameIdx + 1) * frameW, bh);
+            } else {
+                srcRect.set(0, 0, bw, bh);
+            }
+
+            // Shared square draw size across run/jump/idle/slide because all poses share one normalized scale!
+            float drawSize = isTotoro ? 124f : isKodama ? 114f : 106f;
             float drawX = 214f;
-            float drawY = (float) (RunnerPhysics.GROUND - runner.y + pose.hop);
+            float drawY = (float) (RunnerPhysics.GROUND - runner.y + pose.hop * 0.65);
+
+            float sx = 1f;
+            float sy = 1f;
+            if (landSquash > 0.0 && runner.y <= 0.5) {
+                float sq = (float) Math.sin((landSquash / 0.14) * Math.PI);
+                sx = 1f + sq * 0.12f;
+                sy = 1f - sq * 0.11f;
+            } else if ("jump".equals(pose.mode)) {
+                float stretch = Math.max(-0.06f, Math.min(0.08f, (float) (-runner.vy / 810.0) * 0.07f));
+                sx = 1f - stretch * 0.5f;
+                sy = 1f + stretch;
+            }
 
             canvas.save();
             canvas.translate(drawX, drawY);
-            if ("run".equals(pose.mode)) {
-                float tilt = (float) (Math.sin(runner.elapsed * 14.0) * 6.5);
-                canvas.rotate(tilt, 0f, -drawH * 0.4f);
-            } else if ("jump".equals(pose.mode)) {
-                canvas.rotate(-9f, 0f, -drawH * 0.4f);
-            } else if (isSlide) {
-                canvas.rotate(14f, 0f, -drawH * 0.35f);
+            canvas.scale(sx, sy);
+            if ("jump".equals(pose.mode)) {
+                float airTilt = Math.max(-8f, Math.min(9f, (float) (runner.vy * 0.011)));
+                canvas.rotate(airTilt, 0f, -drawSize * 0.45f);
+            } else if ("run".equals(pose.mode)) {
+                float runLean = isTotoro ? 1.8f : isKodama ? 2.2f : 2.8f;
+                canvas.rotate(runLean, 0f, -drawSize * 0.35f);
             }
 
-            RectF dst = new RectF(-drawW / 2f, -drawH + 6f, drawW / 2f, 6f);
+            dstRect.set(-drawSize / 2f, -drawSize + 8f, drawSize / 2f, 8f);
             paint.reset();
             paint.setAntiAlias(true);
             paint.setFilterBitmap(true);
             paint.setAlpha(255);
-            canvas.drawBitmap(heroBmp, null, dst, paint);
+            canvas.drawBitmap(heroBmp, srcRect, dstRect, paint);
             canvas.restore();
         }
 
-        // 6. Meadow dandelion spores / dust trail behind feet
-        if ("running".equals(runner.status) && runner.y <= 1 && runner.duck <= 0) {
-            paint.setColor(GhibliTheme.COLOR_PAPER);
-            paint.setAlpha(150);
+        // 7. Cozy trail dust & tiny grass flecks kicked up while running
+        if ("running".equals(runner.status) && runner.y <= 1.0) {
+            paint.setStyle(Paint.Style.FILL);
             for (int k = 0; k < 5; k++) {
-                double age = (runner.elapsed * 2.2 + k * 0.19) % 1.0;
-                float px = (float) (176 - age * 54);
-                float py = (float) (RunnerPhysics.GROUND - 5 - age * 12);
-                canvas.drawCircle(px, py, (float) (2.5 + age * 4.5), paint);
+                double age = (runner.elapsed * 2.4 + k * 0.21) % 1.0;
+                float px = (float) (186.0 - age * 58.0);
+                float py = (float) (RunnerPhysics.GROUND - 2.0 - Math.sin(age * Math.PI) * 14.0);
+                paint.setColor(k % 2 == 0 ? Color.parseColor("#f2e3b8") : Color.parseColor("#c8dda0"));
+                paint.setAlpha((int) ((1.0 - age) * 150.0));
+                canvas.drawCircle(px, py, (float) (2.5 + age * 4.0), paint);
             }
             paint.setAlpha(255);
         }
     }
 
     private void renderObstacle(Canvas canvas, RunnerPhysics.Obstacle o) {
+        paint.reset();
+        paint.setAntiAlias(true);
+        paint.setFilterBitmap(true);
+
         if ("paper_bird".equals(o.kind)) {
+            boolean wingsUp = ((int) Math.floor(runner.elapsed * 7.5 + o.id)) % 2 == 0;
+            Bitmap birdBmp = bitmaps.get(wingsUp ? "obs-bird-up" : "obs-bird-down");
+            float cx = (float) (o.x + o.w / 2.0);
+            float cy = (float) (o.y + o.h / 2.0 + Math.sin(runner.elapsed * 8.5 + o.id) * 5.0);
+
+            // Subtle shadow on the meadow trail far below the gliding paper bird
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.parseColor("#241c14"));
+            paint.setAlpha(42);
+            dstRect.set(cx - 24f, (float) RunnerPhysics.GROUND - 2f, cx + 24f, (float) RunnerPhysics.GROUND + 6f);
+            canvas.drawOval(dstRect, paint);
+            paint.setAlpha(255);
+
+            if (birdBmp != null && !birdBmp.isRecycled()) {
+                canvas.save();
+                canvas.translate(cx, cy);
+                float pitch = (float) (Math.cos(runner.elapsed * 8.5 + o.id) * 5.0);
+                canvas.rotate(pitch);
+                float sz = 78f;
+                dstRect.set(-sz / 2f, -sz / 2f, sz / 2f, sz / 2f);
+                canvas.drawBitmap(birdBmp, null, dstRect, paint);
+                canvas.restore();
+                return;
+            }
+
+            // Procedural fallback while bitmap loads
             canvas.save();
-            float cx = (float) (o.x + o.w / 2);
-            float cy = (float) (o.y + o.h / 2 + Math.sin(runner.elapsed * 9.0 + o.id) * 4.0);
             canvas.translate(cx, cy);
             float wing = (float) (Math.sin(runner.elapsed * 15.0 + o.id) * 9.0);
-
             birdPath.reset();
             birdPath.moveTo(-24f, 0f);
             birdPath.lineTo(-2f, -15f - wing * 0.4f);
@@ -722,7 +856,6 @@ public class ValleyRunnerView extends View {
             birdPath.lineTo(8f, 9f + wing * 0.35f);
             birdPath.lineTo(-4f, 4f);
             birdPath.close();
-
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(GhibliTheme.COLOR_PAPER);
             canvas.drawPath(birdPath, paint);
@@ -732,27 +865,60 @@ public class ValleyRunnerView extends View {
             canvas.drawPath(birdPath, paint);
             canvas.restore();
         } else if ("stump".equals(o.kind)) {
-            // Mossy forest tree stump
+            float cx = (float) (o.x + o.w / 2.0);
+            // Soft ground contact shadow
             paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.parseColor("#241c14"));
+            paint.setAlpha(82);
+            dstRect.set(cx - 42f, (float) RunnerPhysics.GROUND - 2f, cx + 42f, (float) RunnerPhysics.GROUND + 10f);
+            canvas.drawOval(dstRect, paint);
+            paint.setAlpha(255);
+
+            Bitmap stumpBmp = bitmaps.get("obs-stump");
+            if (stumpBmp != null && !stumpBmp.isRecycled()) {
+                float sz = 84f;
+                dstRect.set(cx - sz / 2f, (float) RunnerPhysics.GROUND - sz + 11f, cx + sz / 2f, (float) RunnerPhysics.GROUND + 11f);
+                canvas.drawBitmap(stumpBmp, null, dstRect, paint);
+                return;
+            }
+
             paint.setColor(Color.parseColor("#6b4c30"));
             canvas.drawRoundRect((float) o.x, (float) (o.y + 6), (float) (o.x + o.w), (float) (o.y + o.h), 8f, 8f, paint);
             paint.setColor(Color.parseColor("#c29b63"));
-            canvas.drawOval(new RectF((float) o.x + 2, (float) o.y, (float) (o.x + o.w - 2), (float) (o.y + 14)), paint);
-            // Green moss cap
-            paint.setColor(Color.parseColor("#7cb56b"));
-            canvas.drawCircle((float) (o.x + 12), (float) (o.y + 14), 7f, paint);
-            canvas.drawCircle((float) (o.x + 23), (float) (o.y + 12), 5f, paint);
+            dstRect.set((float) o.x + 2, (float) o.y, (float) (o.x + o.w - 2), (float) (o.y + 14));
+            canvas.drawOval(dstRect, paint);
         } else {
-            // Carved stone forest shrine lantern post
+            float cx = (float) (o.x + o.w / 2.0);
+            // Soft ground contact shadow
             paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.parseColor("#241c14"));
+            paint.setAlpha(82);
+            dstRect.set(cx - 32f, (float) RunnerPhysics.GROUND - 2f, cx + 32f, (float) RunnerPhysics.GROUND + 10f);
+            canvas.drawOval(dstRect, paint);
+            paint.setAlpha(255);
+
+            Bitmap stoneBmp = bitmaps.get("obs-stone");
+            if (stoneBmp != null && !stoneBmp.isRecycled()) {
+                float sz = 92f;
+                float top = (float) RunnerPhysics.GROUND - sz + 9f;
+                // Gentle warm cel-flame halo behind the lantern chamber
+                float pulse = 0.85f + 0.15f * (float) Math.sin(runner.elapsed * 7.0 + o.id);
+                paint.setColor(Color.parseColor("#ffd466"));
+                paint.setAlpha((int) (68 * pulse));
+                canvas.drawCircle(cx, top + sz * 0.40f, 18f * pulse, paint);
+                paint.setAlpha(255);
+
+                dstRect.set(cx - sz / 2f, top, cx + sz / 2f, (float) RunnerPhysics.GROUND + 9f);
+                canvas.drawBitmap(stoneBmp, null, dstRect, paint);
+                return;
+            }
+
             paint.setColor(Color.parseColor("#7a8478"));
             canvas.drawRoundRect((float) (o.x + 10), (float) (o.y + 20), (float) (o.x + o.w - 10), (float) (o.y + o.h), 4f, 4f, paint);
-            // Lantern chamber with warm amber glow
             paint.setColor(Color.parseColor("#929c8f"));
             canvas.drawRoundRect((float) (o.x + 4), (float) (o.y + 10), (float) (o.x + o.w - 4), (float) (o.y + 30), 4f, 4f, paint);
             paint.setColor(GhibliTheme.COLOR_ACCENT);
             canvas.drawRoundRect((float) (o.x + 11), (float) (o.y + 15), (float) (o.x + o.w - 11), (float) (o.y + 25), 3f, 3f, paint);
-            // Sloped stone roof
             paint.setColor(Color.parseColor("#606b5e"));
             canvas.drawRoundRect((float) o.x, (float) o.y + 2, (float) (o.x + o.w), (float) (o.y + 12), 5f, 5f, paint);
         }

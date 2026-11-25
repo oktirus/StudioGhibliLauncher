@@ -34,6 +34,7 @@ public class PreferencesManager {
 
     public static final String KEY_RUNNER_SOOT = "runner_best_soot";
     public static final String KEY_RUNNER_KODAMA = "runner_best_kodama";
+    public static final String KEY_RUNNER_TOTORO = "runner_best_totoro";
     public static final String KEY_RUNNER_HERO = "runner_last_hero";
 
     private final SharedPreferences prefs;
@@ -192,11 +193,16 @@ public class PreferencesManager {
         if ("kodama".equals(hero)) {
             return prefs.getInt(KEY_RUNNER_KODAMA, 0);
         }
+        if ("totoro".equals(hero)) {
+            return prefs.getInt(KEY_RUNNER_TOTORO, 0);
+        }
         return prefs.getInt(KEY_RUNNER_SOOT, 0);
     }
 
     public void setRunnerBest(String hero, int score) {
-        String key = "kodama".equals(hero) ? KEY_RUNNER_KODAMA : KEY_RUNNER_SOOT;
+        String key = "kodama".equals(hero) ? KEY_RUNNER_KODAMA
+                : "totoro".equals(hero) ? KEY_RUNNER_TOTORO
+                : KEY_RUNNER_SOOT;
         int current = prefs.getInt(key, 0);
         if (score > current) {
             prefs.edit().putInt(key, score).apply();
@@ -205,11 +211,13 @@ public class PreferencesManager {
 
     public String getRunnerHero() {
         String hero = prefs.getString(KEY_RUNNER_HERO, "soot");
-        return "kodama".equals(hero) ? "kodama" : "soot";
+        if ("kodama".equals(hero) || "totoro".equals(hero)) return hero;
+        return "soot";
     }
 
     public void setRunnerHero(String hero) {
-        prefs.edit().putString(KEY_RUNNER_HERO, "kodama".equals(hero) ? "kodama" : "soot").apply();
+        String safe = ("kodama".equals(hero) || "totoro".equals(hero)) ? hero : "soot";
+        prefs.edit().putString(KEY_RUNNER_HERO, safe).apply();
     }
 
     /**

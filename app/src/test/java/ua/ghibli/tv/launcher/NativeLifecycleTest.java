@@ -162,10 +162,16 @@ public class NativeLifecycleTest {
         ExecutorService loader = field(game, "bitmapExecutor");
         drain(loader);
         Map<String, Bitmap> images = field(game, "bitmaps");
-        assertEquals(Set.of("valley", "soot-motion", "soot-slide"), images.keySet());
+        assertEquals(Set.of("valley", "ground", "obs-stump", "obs-stone", "obs-bird-up", "obs-bird-down",
+                "soot-motion", "soot-slide"), images.keySet());
         assertTrue(game.performAccessibilityAction(R.id.runner_hero, null));
         drain(loader);
-        assertEquals(Set.of("valley", "kodama-motion", "kodama-slide"), images.keySet());
+        assertEquals(Set.of("valley", "ground", "obs-stump", "obs-stone", "obs-bird-up", "obs-bird-down",
+                "kodama-motion", "kodama-slide"), images.keySet());
+        assertTrue(game.performAccessibilityAction(R.id.runner_hero, null));
+        drain(loader);
+        assertEquals(Set.of("valley", "ground", "obs-stump", "obs-stone", "obs-bird-up", "obs-bird-down",
+                "totoro-motion", "totoro-slide"), images.keySet());
         AccessibilityNodeInfo node = game.createAccessibilityNodeInfo();
         assertTrue(node.getActionList().stream().anyMatch(a -> a.getId() == R.id.runner_jump));
         assertTrue(game.performAccessibilityAction(R.id.runner_jump, null));
@@ -174,7 +180,7 @@ public class NativeLifecycleTest {
         physics.distance = 12340;
         activity.closeActivePanel();
         PreferencesManager prefs = field(activity, "prefs");
-        assertEquals(1234, prefs.getRunnerBest("kodama"));
+        assertEquals(1234, prefs.getRunnerBest("totoro"));
         assertTrue(images.isEmpty());
         assertTrue(loader.isShutdown());
     }
