@@ -105,14 +105,6 @@ public class OutlinedGlyphButton extends LinearLayout {
         iconView.setLayoutParams(new LayoutParams(px, px));
     }
 
-    public void setColors(int normalBorder, int focusedBorder, int normalBg, int focusedBg) {
-        this.normalBorderColor = normalBorder;
-        this.focusedBorderColor = focusedBorder;
-        this.normalBgColor = normalBg;
-        this.focusedBgColor = focusedBg;
-        invalidate();
-    }
-
     @Override
     protected void onDraw(Canvas canvas) {
         if (isBorderless && !isFocusedState) {

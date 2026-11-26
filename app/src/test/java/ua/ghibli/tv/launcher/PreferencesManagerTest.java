@@ -9,7 +9,6 @@ import ua.ghibli.tv.launcher.prefs.PreferencesManager;
 
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -79,6 +78,8 @@ public class PreferencesManagerTest {
         Assert.assertEquals(0.45f, pm.getVolume(), 0.001f);
         Assert.assertEquals(0.25f, pm.getMusicVolume(), 0.001f);
         Assert.assertEquals(CatalogData.DEFAULT_MUSIC_ID, pm.getMusicTrack());
+        Assert.assertFalse(pm.isMusicRotationEnabled());
+        Assert.assertFalse(pm.shouldShowResources());
         Assert.assertEquals(CatalogData.DEFAULT_TECHNIQUE_ID, pm.getTechnique());
         Assert.assertEquals(CatalogData.DEFAULT_HIGHLIGHT_SOUND_ID, pm.getHighlightSound());
         Assert.assertTrue(pm.isMotionEnabled());
@@ -95,6 +96,8 @@ public class PreferencesManagerTest {
         previous.setMotionEnabled(false);
         previous.setAudioEnabled(false);
         previous.setAmbienceEnabled(false);
+        previous.setMusicRotationEnabled(true);
+        previous.setShowResources(true);
         previous.setRotationSeconds(0);
         previous.setIdleSeconds(300);
         previous.setTechnique("calcifer");
@@ -107,6 +110,8 @@ public class PreferencesManagerTest {
         Assert.assertFalse(updated.isMotionEnabled());
         Assert.assertFalse(updated.isAudioEnabled());
         Assert.assertFalse(updated.isAmbienceEnabled());
+        Assert.assertTrue(updated.isMusicRotationEnabled());
+        Assert.assertTrue(updated.shouldShowResources());
         Assert.assertEquals(0, updated.getRotationSeconds());
         Assert.assertEquals(300, updated.getIdleSeconds());
         Assert.assertEquals("calcifer", updated.getTechnique());
@@ -114,39 +119,6 @@ public class PreferencesManagerTest {
         Assert.assertEquals("kodama", updated.getRunnerHero());
         Assert.assertEquals(420, updated.getRunnerBest("kodama"));
         Assert.assertEquals(before, saved.getAll());
-    }
-
-    @Test
-    public void testImportFromJsonClampsAndValidates() {
-        String json = "{" +
-                "\"scene\":\"kiki_coast\"," +
-                "\"audio\":true," +
-                "\"ambience\":false," +
-                "\"volume\":1.8," +
-                "\"musicVolume\":-0.2," +
-                "\"music\":\"lantern_dusk\"," +
-                "\"technique\":\"kodama\"," +
-                "\"highlightSound\":\"aetherium\"," +
-                "\"motion\":false," +
-                "\"rotation\":180," +
-                "\"idle\":300," +
-                "\"pins\":[\"pkg.a\",\"pkg.b\"]" +
-                "}";
-        Assert.assertTrue(pm.importFromJson(json));
-        Assert.assertEquals("kiki_coast", pm.getScene());
-        Assert.assertTrue(pm.isAudioEnabled());
-        Assert.assertFalse(pm.isAmbienceEnabled());
-        Assert.assertEquals(1.0f, pm.getVolume(), 0.001f);
-        Assert.assertEquals(0.0f, pm.getMusicVolume(), 0.001f);
-        Assert.assertEquals("lantern_dusk", pm.getMusicTrack());
-        Assert.assertEquals("kodama", pm.getTechnique());
-        Assert.assertEquals("aetherium", pm.getHighlightSound());
-        Assert.assertFalse(pm.isMotionEnabled());
-        Assert.assertEquals(180, pm.getRotationSeconds());
-        Assert.assertEquals(300, pm.getIdleSeconds());
-        List<String> pins = pm.getPins();
-        Assert.assertNotNull(pins);
-        Assert.assertEquals(List.of("pkg.a", "pkg.b"), pins);
     }
 
     @Test

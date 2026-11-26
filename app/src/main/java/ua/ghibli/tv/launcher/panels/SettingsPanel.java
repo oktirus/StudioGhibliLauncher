@@ -60,20 +60,10 @@ public class SettingsPanel extends FrameLayout {
     private LinearLayout content;
     private View openedGroup;
 
-    private TextView spiritValueText;
-    private Button spiritPreviewButton;
     private TextView homeScreenValueText;
     private TextView homeRedirectValueText;
-    private GhibliSwitch motionSwitch;
     private GhibliSwitch audioSwitch;
-    private GhibliSwitch musicSwitch;
-    private GhibliSwitch rotationSwitch;
-    private GhibliSwitch resourcesSwitch;
     private TextView musicCountdown;
-    private GhibliSeekBar fxVolumeBar;
-    private TextView fxVolumeText;
-    private GhibliSeekBar musicVolumeBar;
-    private TextView musicVolumeText;
     private final Runnable musicCountdownTick = this::refreshMusicCountdown;
 
     private OnSettingsActionListener listener;
@@ -111,10 +101,9 @@ public class SettingsPanel extends FrameLayout {
         View spiritRow = createNavigationLink("Духи навігації", getTechniqueName(prefs.getTechnique()), v -> {
             if (listener != null) listener.onSpiritsRequested();
         });
-        spiritValueText = spiritRow.findViewById(android.R.id.text2);
         appearance.addView(spiritRow);
 
-        motionSwitch = new GhibliSwitch(context);
+        GhibliSwitch motionSwitch = new GhibliSwitch(context);
         appearance.addView(createSwitchRow("Живий світ", "Листя, пелюстки, паралакс та рухомі духи.",
                 motionSwitch, prefs.isMotionEnabled(), (sw, checked) -> {
                     prefs.setMotionEnabled(checked);
@@ -146,16 +135,11 @@ public class SettingsPanel extends FrameLayout {
                 }));
 
         int currentFx = (int) (prefs.getVolume() * 100);
-        fxVolumeBar = new GhibliSeekBar(context);
-        View fxVolRow = createSliderRow("Гучність ефектів", "Окремий баланс для цього лаунчера.",
-                fxVolumeBar, currentFx, (sb, val) -> {
-                    prefs.setVolume(val / 100f);
-                    if (fxVolumeText != null) fxVolumeText.setText(val + "%");
-                });
-        fxVolumeText = fxVolRow.findViewById(android.R.id.text2);
-        audio.addView(fxVolRow);
+        GhibliSeekBar fxVolumeBar = new GhibliSeekBar(context);
+        audio.addView(createSliderRow("Гучність ефектів", "Окремий баланс для цього лаунчера.",
+                fxVolumeBar, currentFx, (sb, val) -> prefs.setVolume(val / 100f)));
 
-        musicSwitch = new GhibliSwitch(context);
+        GhibliSwitch musicSwitch = new GhibliSwitch(context);
         audio.addView(createSwitchRow("Музика долини", "Оригінальні мелодії з аніме Studio Ghibli (Тоторо, Привиди, Замок Хаула).",
                 musicSwitch, prefs.isAmbienceEnabled(), (sw, checked) -> {
                     prefs.setAmbienceEnabled(checked);
@@ -167,7 +151,7 @@ public class SettingsPanel extends FrameLayout {
         setupMusicSpinner(musicSpinner);
         audio.addView(createSpinnerRow("Початковий трек", "Саундтреки Joe Hisaishi з фільмів Studio Ghibli.", musicSpinner));
 
-        rotationSwitch = new GhibliSwitch(context);
+        GhibliSwitch rotationSwitch = new GhibliSwitch(context);
         View rotationRow = createSwitchRow("Автоматично змінювати музику", "Плавний перехід між треками.",
                 rotationSwitch, prefs.isMusicRotationEnabled(), (sw, checked) -> {
                     prefs.setMusicRotationEnabled(checked);
@@ -178,26 +162,22 @@ public class SettingsPanel extends FrameLayout {
         audio.addView(rotationRow);
 
         int currentMusicVol = (int) (prefs.getMusicVolume() * 100);
-        musicVolumeBar = new GhibliSeekBar(context);
-        View musicVolRow = createSliderRow("Гучність музики", "Окремо від звуків навігації.",
+        GhibliSeekBar musicVolumeBar = new GhibliSeekBar(context);
+        audio.addView(createSliderRow("Гучність музики", "Окремо від звуків навігації.",
                 musicVolumeBar, currentMusicVol, (sb, val) -> {
                     prefs.setMusicVolume(val / 100f);
-                    if (musicVolumeText != null) musicVolumeText.setText(val + "%");
                     audioController.updateMusic();
-                });
-        musicVolumeText = musicVolRow.findViewById(android.R.id.text2);
-        audio.addView(musicVolRow);
+                }));
 
         audio.addView(createActionButton("Прослухати звук виділення", v -> {
             audioSwitch.setChecked(true);
             audioController.stopTechniquePreview();
             audioController.playFocusSound();
         }));
-        spiritPreviewButton = createActionButton("Перевірити духа: " + getTechniqueName(prefs.getTechnique()), v -> {
+        audio.addView(createActionButton("Перевірити духа: " + getTechniqueName(prefs.getTechnique()), v -> {
             audioSwitch.setChecked(true);
             audioController.playTechniquePreview(prefs.getTechnique());
-        });
-        audio.addView(spiritPreviewButton);
+        }));
 
         LinearLayout home = createPage();
         addGroup("Домашній екран", home);
@@ -238,7 +218,7 @@ public class SettingsPanel extends FrameLayout {
         about.addView(createNavigationLink("Оновлення Ghibli", installedVersion, v -> {
             if (listener != null) listener.onUpdatesRequested();
         }));
-        resourcesSwitch = new GhibliSwitch(context);
+        GhibliSwitch resourcesSwitch = new GhibliSwitch(context);
         about.addView(createSwitchRow("Показувати CPU та RAM",
                 "Використання ресурсів Ghibli на головному екрані.",
                 resourcesSwitch, prefs.shouldShowResources(), (sw, checked) -> {
@@ -401,12 +381,6 @@ public class SettingsPanel extends FrameLayout {
         volumeControl.setOrientation(LinearLayout.HORIZONTAL);
         volumeControl.setGravity(Gravity.CENTER_VERTICAL);
 
-        sb.setMax(100);
-        sb.setProgress(initial);
-        sb.setOnProgressChangeListener(changeListener);
-        volumeControl.addView(sb, new LinearLayout.LayoutParams(
-                GhibliTheme.dp(getContext(), 125), ViewGroup.LayoutParams.WRAP_CONTENT));
-
         TextView valView = new TextView(getContext());
         valView.setId(android.R.id.text2);
         valView.setText(initial + "%");
@@ -415,6 +389,15 @@ public class SettingsPanel extends FrameLayout {
         valView.setTypeface(GhibliTheme.getNunitoBold(getContext()));
         valView.setPadding(GhibliTheme.dp(getContext(), 9), 0, 0, 0);
         valView.setMinWidth(GhibliTheme.dp(getContext(), 36));
+
+        sb.setMax(100);
+        sb.setProgress(initial);
+        sb.setOnProgressChangeListener((bar, val) -> {
+            valView.setText(val + "%");
+            if (changeListener != null) changeListener.onProgressChanged(bar, val);
+        });
+        volumeControl.addView(sb, new LinearLayout.LayoutParams(
+                GhibliTheme.dp(getContext(), 125), ViewGroup.LayoutParams.WRAP_CONTENT));
         volumeControl.addView(valView);
 
         row.addView(volumeControl);
@@ -432,11 +415,7 @@ public class SettingsPanel extends FrameLayout {
         row.setPadding(GhibliTheme.dp(getContext(), 12), GhibliTheme.dp(getContext(), 12),
                 GhibliTheme.dp(getContext(), 12), GhibliTheme.dp(getContext(), 12));
 
-        GradientDrawable gd = new GradientDrawable();
-        gd.setColor(GhibliTheme.COLOR_CARD_BG);
-        gd.setCornerRadius(GhibliTheme.dp(getContext(), 10));
-        gd.setStroke(GhibliTheme.dp(getContext(), 1), Color.parseColor("#44e8b858"));
-        row.setBackground(gd);
+        row.setBackground(focusBackground(GhibliTheme.COLOR_CARD_BG, Color.parseColor("#44e8b858")));
 
         TextView tv = new TextView(getContext());
         tv.setText(title);
@@ -454,14 +433,6 @@ public class SettingsPanel extends FrameLayout {
         row.addView(tvVal);
 
         row.setOnClickListener(clickListener);
-        row.setOnFocusChangeListener((v, hasFocus) -> {
-            GradientDrawable d = new GradientDrawable();
-            d.setColor(hasFocus ? GhibliTheme.COLOR_BUTTON_FOCUS : GhibliTheme.COLOR_CARD_BG);
-            d.setCornerRadius(GhibliTheme.dp(getContext(), 10));
-            d.setStroke(GhibliTheme.dp(getContext(), hasFocus ? 2 : 1),
-                    hasFocus ? GhibliTheme.COLOR_ACCENT : Color.parseColor("#44e8b858"));
-            v.setBackground(d);
-        });
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
@@ -481,22 +452,8 @@ public class SettingsPanel extends FrameLayout {
         btn.setTypeface(GhibliTheme.getNunitoBold(getContext()));
         btn.setFocusable(true);
         btn.setFocusableInTouchMode(true);
-
-        GradientDrawable gd = new GradientDrawable();
-        gd.setColor(GhibliTheme.COLOR_BUTTON_BG);
-        gd.setCornerRadius(GhibliTheme.dp(getContext(), 10));
-        gd.setStroke(GhibliTheme.dp(getContext(), 1), Color.parseColor("#55e8b858"));
-        btn.setBackground(gd);
-
+        btn.setBackground(focusBackground(GhibliTheme.COLOR_BUTTON_BG, Color.parseColor("#55e8b858")));
         btn.setOnClickListener(clickListener);
-        btn.setOnFocusChangeListener((v, hasFocus) -> {
-            GradientDrawable d = new GradientDrawable();
-            d.setColor(hasFocus ? GhibliTheme.COLOR_BUTTON_FOCUS : GhibliTheme.COLOR_BUTTON_BG);
-            d.setCornerRadius(GhibliTheme.dp(getContext(), 10));
-            d.setStroke(GhibliTheme.dp(getContext(), hasFocus ? 2 : 1),
-                    hasFocus ? GhibliTheme.COLOR_ACCENT : Color.parseColor("#55e8b858"));
-            v.setBackground(d);
-        });
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, GhibliTheme.dp(getContext(), 42)
@@ -717,49 +674,6 @@ public class SettingsPanel extends FrameLayout {
             if (t.getId().equals(id)) return t.getName();
         }
         return "Сусуватарі";
-    }
-
-    public void updateState() {
-        String spiritName = getTechniqueName(prefs.getTechnique());
-        if (spiritValueText != null) {
-            spiritValueText.setText(spiritName);
-        }
-        if (spiritPreviewButton != null) {
-            spiritPreviewButton.setText("Перевірити духа: " + spiritName);
-        }
-        if (motionSwitch != null) {
-            motionSwitch.setChecked(prefs.isMotionEnabled());
-        }
-        if (audioSwitch != null) {
-            audioSwitch.setChecked(prefs.isAudioEnabled());
-        }
-        if (musicSwitch != null) {
-            musicSwitch.setChecked(prefs.isAmbienceEnabled());
-        }
-        if (rotationSwitch != null) {
-            rotationSwitch.setChecked(prefs.isMusicRotationEnabled());
-        }
-        if (resourcesSwitch != null) {
-            resourcesSwitch.setChecked(prefs.shouldShowResources());
-        }
-        if (fxVolumeBar != null) {
-            fxVolumeBar.setProgress((int) (prefs.getVolume() * 100));
-        }
-        if (fxVolumeText != null) {
-            fxVolumeText.setText(((int) (prefs.getVolume() * 100)) + "%");
-        }
-        if (musicVolumeBar != null) {
-            musicVolumeBar.setProgress((int) (prefs.getMusicVolume() * 100));
-        }
-        if (musicVolumeText != null) {
-            musicVolumeText.setText(((int) (prefs.getMusicVolume() * 100)) + "%");
-        }
-        refreshMusicCountdown();
-    }
-
-    public void updateTechnique(String name) {
-        if (spiritValueText != null) spiritValueText.setText(name);
-        if (spiritPreviewButton != null) spiritPreviewButton.setText("Перевірити духа: " + name);
     }
 
     public void setHomeScreenActive(boolean active) {

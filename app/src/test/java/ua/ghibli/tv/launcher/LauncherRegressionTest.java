@@ -549,6 +549,45 @@ public class LauncherRegressionTest {
         }
     }
 
+    @Test public void closingSettingsAndQuietMomentStopSpiritPreview() throws Exception {
+        MainActivity activity = start();
+        AudioController original = field(activity, "audioController");
+        RecordingAudio audio = new RecordingAudio(activity, field(activity, "prefs"));
+        org.robolectric.util.ReflectionHelpers.setField(activity, "audioController", audio);
+        original.release();
+
+        call(activity, "openSettings");
+        SettingsPanel panel = field(activity, "settingsPanel");
+        openAudioSettings(panel);
+        findText(panel, "Перевірити духа:").performClick();
+        assertNotNull(audio.previewTechnique);
+        int stopsBeforeClose = audio.previewStops;
+        call(activity, "closeActivePanel");
+        assertTrue("Closing SettingsPanel stops any running spirit preview", audio.previewStops > stopsBeforeClose);
+
+        call(activity, "openSettings");
+        panel = field(activity, "settingsPanel");
+        int stopsBeforeQuiet = audio.previewStops;
+        View quiet = (View) findText(panel, "Тиха мить").getParent();
+        assertTrue(quiet.performClick());
+        assertTrue("Entering quiet moment from settings stops any running spirit preview", audio.previewStops > stopsBeforeQuiet);
+    }
+
+    @Test public void runnerGamePausesAndResumesResourceMonitor() throws Exception {
+        MainActivity activity = start();
+        PreferencesManager prefs = field(activity, "prefs");
+        prefs.setShowResources(true);
+        call(activity, "updateResourceDisplay");
+        Object resources = field(activity, "resources");
+        assertNotNull("Resource monitor samples on Home when enabled", field(resources, "sampling"));
+
+        call(activity, "openGame");
+        assertNull("Full-screen mini-game pauses Debug.getPss() resource polling", field(resources, "sampling"));
+
+        call(activity, "closeActivePanel");
+        assertNotNull("Closing mini-game resumes resource monitor on Home", field(resources, "sampling"));
+    }
+
     private static View layout(MainActivity activity) {
         View root = activity.getWindow().getDecorView();
         for (int i = 0; i < 2; i++) {
@@ -621,6 +660,7 @@ public class LauncherRegressionTest {
         long remainingMusicMillis = -1L;
         int runnerPreparations;
         int runnerStops;
+        int previewStops;
         final List<RunnerCue> runnerSounds = new ArrayList<>();
         String previewTechnique;
         RecordingAudio(Context context, PreferencesManager prefs) { super(context, prefs); }
@@ -632,6 +672,7 @@ public class LauncherRegressionTest {
         @Override public synchronized void playRunnerSound(RunnerCue cue) { runnerSounds.add(cue); }
         @Override public synchronized void stopRunnerSounds() { runnerStops++; }
         @Override public synchronized boolean playTechniquePreview(String id) { previewTechnique = id; return true; }
+        @Override public synchronized void stopTechniquePreview() { previewStops++; super.stopTechniquePreview(); }
     }
 
     private static class CountingFocus extends SpiritFocusView {

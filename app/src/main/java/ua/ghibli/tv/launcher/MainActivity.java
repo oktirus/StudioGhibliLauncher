@@ -681,6 +681,7 @@ public class MainActivity extends Activity {
         }
         closeActivePanel();
         activePanel = panel;
+        updateResourceDisplay();
         mainShell.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
         modalContainer.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         backgroundView.setDecorPaused(true);
@@ -766,12 +767,14 @@ public class MainActivity extends Activity {
             } else if (closing == orderPanel) {
                 orderPanel = null;
             } else if (closing == settingsPanel) {
+                audioController.stopTechniquePreview();
                 settingsPanel = null;
             }
             modalContainer.removeAllViews();
             modalContainer.setVisibility(View.GONE);
             modalContainer.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
             activePanel = null;
+            updateResourceDisplay();
             mainShell.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
             spiritRenderer.trimMemory(SpiritRenderer.platesFor(prefs.getTechnique()));
             backgroundView.setDecorPaused(false);
@@ -895,7 +898,6 @@ public class MainActivity extends Activity {
             });
         }
         showPanel(settingsPanel);
-        settingsPanel.updateState();
         updateHomeSettingsStatus();
         settingsPanel.focusInitial();
         audioController.playUiSound();
@@ -909,6 +911,7 @@ public class MainActivity extends Activity {
 
     private void updateResourceDisplay() {
         resources.setActive(activityResumed && mainShell.getVisibility() == View.VISIBLE
+                && !(activePanel instanceof ValleyRunnerView)
                 && prefs.shouldShowResources());
     }
 

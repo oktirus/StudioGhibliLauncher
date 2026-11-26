@@ -170,6 +170,115 @@ public class UpdateControllerTest {
         assertNull(availableVersion);
     }
 
+    @Test public void silentErrorKeepsDownloadedReadyApkForManualInstall() throws Exception {
+        updates.close();
+        updates = new UpdateController(activity.get(), canPrompt::get, version -> availableVersion = version, () -> {
+            clients.incrementAndGet();
+            return new GitHubReleaseClient(url -> new UpdateFixtures.Response(url, new byte[0], 503));
+        });
+        java.io.File cachedApk = new java.io.File(activity.get().getCacheDir(), "cached-1.2.0.apk");
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(cachedApk)) {
+            out.write(UpdateFixtures.APK);
+        }
+        try {
+            org.robolectric.util.ReflectionHelpers.setField(updates, "readyUpdate", UpdateFixtures.update());
+            org.robolectric.util.ReflectionHelpers.setField(updates, "readyApk", cachedApk);
+            updates.checkAutomatically();
+            finishWorker();
+            assertEquals(1, clients.get());
+
+            updates.checkManually();
+            AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
+            assertTrue(dialog.isShowing());
+            assertEquals("Оновлення готове", Shadows.shadowOf(dialog).getTitle().toString());
+            assertTrue(Shadows.shadowOf(dialog).getMessage().toString().contains("1.2.0"));
+            assertEquals(1, clients.get());
+        } finally {
+            cachedApk.delete();
+        }
+    }
+
+    @Test public void silentCheckForNewerReleaseClearsStaleReadyApkCache() throws Exception {
+        updates.close();
+        byte[] release = UpdateFixtures.release().toString().getBytes(StandardCharsets.UTF_8);
+        byte[] newerManifest = UpdateFixtures.manifest()
+                .put("versionCode", 4)
+                .put("versionName", "1.3.0")
+                .toString().getBytes(StandardCharsets.UTF_8);
+        updates = new UpdateController(activity.get(), canPrompt::get, version -> availableVersion = version, () -> {
+            clients.incrementAndGet();
+            return new GitHubReleaseClient(url -> new UpdateFixtures.Response(url,
+                    url.toString().equals(UpdateFixtures.API) ? release : newerManifest, 200));
+        });
+        java.io.File cachedApk = new java.io.File(activity.get().getCacheDir(), "stale-1.2.0.apk");
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(cachedApk)) {
+            out.write(UpdateFixtures.APK);
+        }
+        try {
+            org.robolectric.util.ReflectionHelpers.setField(updates, "readyUpdate", UpdateFixtures.update());
+            org.robolectric.util.ReflectionHelpers.setField(updates, "readyApk", cachedApk);
+            canPrompt.set(false);
+            updates.checkAutomatically();
+            finishWorker();
+            assertEquals("1.3.0", availableVersion);
+
+            canPrompt.set(true);
+            updates.checkManually();
+            finishWorker();
+            AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
+            assertTrue(dialog.isShowing());
+            assertTrue(Shadows.shadowOf(dialog).getTitle().toString().contains("1.3.0"));
+            assertEquals("Завантажити", dialog.getButton(DialogInterface.BUTTON_POSITIVE).getText().toString());
+        } finally {
+            cachedApk.delete();
+        }
+    }
+
+    @Test public void manualCheckWithReadyApkCancelsInFlightSilentCheckWithoutDismissingDialog() throws Exception {
+        updates.close();
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch respond = new CountDownLatch(1);
+        byte[] release = UpdateFixtures.release().toString().getBytes(StandardCharsets.UTF_8);
+        byte[] manifest = UpdateFixtures.manifest().toString().getBytes(StandardCharsets.UTF_8);
+        updates = new UpdateController(activity.get(), canPrompt::get, version -> availableVersion = version, () -> {
+            clients.incrementAndGet();
+            return new GitHubReleaseClient(url -> {
+                entered.countDown();
+                try {
+                    if (!respond.await(10, TimeUnit.SECONDS)) throw new java.io.IOException("Timed out");
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    throw new java.io.IOException("Interrupted", error);
+                }
+                return new UpdateFixtures.Response(url,
+                        url.toString().equals(UpdateFixtures.API) ? release : manifest, 200);
+            });
+        });
+        java.io.File cachedApk = new java.io.File(activity.get().getCacheDir(), "ready-race-1.2.0.apk");
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(cachedApk)) {
+            out.write(UpdateFixtures.APK);
+        }
+        try {
+            org.robolectric.util.ReflectionHelpers.setField(updates, "readyUpdate", UpdateFixtures.update());
+            org.robolectric.util.ReflectionHelpers.setField(updates, "readyApk", cachedApk);
+            updates.checkAutomatically();
+            assertTrue(entered.await(10, TimeUnit.SECONDS));
+
+            updates.checkManually();
+            AlertDialog readyDialog = ShadowAlertDialog.getLatestAlertDialog();
+            assertTrue(readyDialog.isShowing());
+            assertEquals("Оновлення готове", Shadows.shadowOf(readyDialog).getTitle().toString());
+            respond.countDown();
+            finishWorker();
+
+            assertTrue("Late silent check must not dismiss the visible ready dialog", readyDialog.isShowing());
+            assertTrue(updates.isShowing());
+        } finally {
+            respond.countDown();
+            cachedApk.delete();
+        }
+    }
+
     private void captureDialog(AlertDialog dialog, String name) throws Exception {
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(16));
         android.view.View view = dialog.getWindow().getDecorView();

@@ -4,7 +4,6 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import org.json.JSONArray;
 import org.json.JSONException;
-import org.json.JSONObject;
 
 import ua.ghibli.tv.launcher.model.CatalogData;
 import ua.ghibli.tv.launcher.model.HighlightSound;
@@ -236,94 +235,5 @@ public class PreferencesManager {
     public void setRunnerHero(String hero) {
         String safe = ("kodama".equals(hero) || "totoro".equals(hero)) ? hero : "soot";
         prefs.edit().putString(KEY_RUNNER_HERO, safe).apply();
-    }
-
-    /**
-     * Atomic JSON import with strict domain validation & clamping.
-     */
-    public boolean importFromJson(String jsonString) {
-        if (jsonString == null || jsonString.trim().isEmpty()) return false;
-        try {
-            JSONObject obj = new JSONObject(jsonString);
-            SharedPreferences.Editor edit = prefs.edit();
-
-            if (obj.has("scene") && !obj.isNull("scene")) {
-                String s = obj.getString("scene");
-                edit.putString(KEY_SCENE, isValidScene(s) ? s : CatalogData.DEFAULT_SCENE_ID);
-            }
-            if (obj.has("audio") && !obj.isNull("audio")) edit.putBoolean(KEY_AUDIO, obj.getBoolean("audio"));
-            if (obj.has("ambience") && !obj.isNull("ambience")) edit.putBoolean(KEY_AMBIENCE, obj.getBoolean("ambience"));
-            if (obj.has("volume") && !obj.isNull("volume")) {
-                double v = obj.optDouble("volume", Double.NaN);
-                if (!Double.isNaN(v) && !Double.isInfinite(v)) {
-                    edit.putFloat(KEY_VOLUME, (float) Math.max(0.0, Math.min(1.0, v)));
-                }
-            }
-            if (obj.has("musicVolume") && !obj.isNull("musicVolume")) {
-                double mv = obj.optDouble("musicVolume", Double.NaN);
-                if (!Double.isNaN(mv) && !Double.isInfinite(mv)) {
-                    edit.putFloat(KEY_MUSIC_VOLUME, (float) Math.max(0.0, Math.min(1.0, mv)));
-                }
-            }
-            if (obj.has("music") && !obj.isNull("music")) {
-                String m = obj.optString("music", "");
-                boolean valid = false;
-                for (MusicTrack mt : CatalogData.MUSIC_TRACKS) {
-                    if (mt.getId().equals(m)) { valid = true; break; }
-                }
-                edit.putString(KEY_MUSIC, valid ? m : CatalogData.DEFAULT_MUSIC_ID);
-            }
-            if (obj.has("technique") && !obj.isNull("technique")) {
-                String t = obj.optString("technique", "");
-                boolean valid = false;
-                for (Technique tech : CatalogData.TECHNIQUES) {
-                    if (tech.getId().equals(t)) { valid = true; break; }
-                }
-                edit.putString(KEY_TECHNIQUE, valid ? t : CatalogData.DEFAULT_TECHNIQUE_ID);
-            }
-            if (obj.has("highlightSound") && !obj.isNull("highlightSound")) {
-                String hs = obj.optString("highlightSound", "");
-                boolean valid = false;
-                for (HighlightSound h : CatalogData.HIGHLIGHT_SOUNDS) {
-                    if (h.getId().equals(hs)) { valid = true; break; }
-                }
-                edit.putString(KEY_HIGHLIGHT_SOUND, valid ? hs : CatalogData.DEFAULT_HIGHLIGHT_SOUND_ID);
-            }
-            if (obj.has("motion") && !obj.isNull("motion")) edit.putBoolean(KEY_MOTION, obj.getBoolean("motion"));
-            if (obj.has("rotation") && !obj.isNull("rotation")) {
-                int r = obj.optInt("rotation", 0);
-                if (r != 0 && r != 60 && r != 180 && r != 600) r = 0;
-                edit.putInt(KEY_ROTATION, r);
-            }
-            if (obj.has("idle") && !obj.isNull("idle")) {
-                int i = obj.optInt("idle", 0);
-                if (i != 0 && i != 300 && i != 900) i = 0;
-                edit.putInt(KEY_IDLE, i);
-            }
-            if (obj.has("pins")) {
-                if (obj.isNull("pins")) {
-                    edit.remove(KEY_PINS);
-                } else {
-                    Object pinsVal = obj.opt("pins");
-                    if (pinsVal instanceof JSONArray) {
-                        JSONArray arr = (JSONArray) pinsVal;
-                        JSONArray validPins = new JSONArray();
-                        for (int k = 0; k < arr.length(); k++) {
-                            Object item = arr.opt(k);
-                            if (item instanceof String) {
-                                String p = ((String) item).trim();
-                                if (!p.isEmpty()) validPins.put(p);
-                            }
-                        }
-                        edit.putString(KEY_PINS, validPins.toString());
-                    }
-                }
-            }
-
-            edit.apply();
-            return true;
-        } catch (JSONException e) {
-            return false;
-        }
     }
 }

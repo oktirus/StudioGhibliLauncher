@@ -39,7 +39,6 @@ public class AudioController {
     private MediaPlayer musicPlayer;
     private MusicState musicState = MusicState.IDLE;
     private MediaPlayer overlapPlayer;
-    private MusicState overlapState = MusicState.STOPPED;
     private MediaPlayer pendingMusicPlayer;
     private String currentMusicTrackId = null;
     private String musicSelection;
@@ -181,6 +180,7 @@ public class AudioController {
         if (!rotateMusic || musicState != MusicState.PLAYING || musicPlayer == null || isMusicPaused) return -1L;
         try {
             int duration = musicPlayer.getDuration();
+            if (duration <= 0) return -1L;
             return Math.max(0, duration - overlapDuration(duration) - musicPlayer.getCurrentPosition());
         } catch (IllegalStateException unavailable) {
             return -1L;
@@ -234,7 +234,6 @@ public class AudioController {
             pendingMusicPlayer = null;
             safeReleasePlayer(overlapPlayer);
             overlapPlayer = musicPlayer;
-            overlapState = MusicState.PLAYING;
             musicPlayer = null;
             musicState = MusicState.IDLE;
             startFadeOut(overlapPlayer, 1200, musicVolumeFactor);
@@ -397,7 +396,6 @@ public class AudioController {
         pendingMusicPlayer = null;
         safeReleasePlayer(overlapPlayer);
         overlapPlayer = null;
-        overlapState = MusicState.STOPPED;
 
         MediaPlayer nextMp = null;
         try (AssetFileDescriptor afd = context.getAssets().openFd(assetPath)) {
@@ -427,7 +425,6 @@ public class AudioController {
                         player.start();
                         safeReleasePlayer(overlapPlayer);
                         overlapPlayer = musicPlayer;
-                        overlapState = MusicState.PLAYING;
                         startFadeOut(overlapPlayer, transitionMs, musicVolumeFactor);
 
                         musicPlayer = player;
@@ -462,7 +459,6 @@ public class AudioController {
                         } else if (player == overlapPlayer) {
                             safeReleasePlayer(player);
                             overlapPlayer = null;
-                            overlapState = MusicState.STOPPED;
                         } else {
                             safeReleasePlayer(player);
                         }
@@ -481,7 +477,6 @@ public class AudioController {
                         } else if (player == overlapPlayer) {
                             safeReleasePlayer(player);
                             overlapPlayer = null;
-                            overlapState = MusicState.STOPPED;
                         }
                     }
                 }
@@ -539,13 +534,11 @@ public class AudioController {
                         if (isLast) {
                             safeReleasePlayer(mp);
                             overlapPlayer = null;
-                            overlapState = MusicState.STOPPED;
                         }
                     } catch (Exception e) {
                         safeReleasePlayer(mp);
                         if (overlapPlayer == mp) {
                             overlapPlayer = null;
-                            overlapState = MusicState.STOPPED;
                         }
                     }
                 }
@@ -579,7 +572,6 @@ public class AudioController {
         }
         safeReleasePlayer(overlapPlayer);
         overlapPlayer = null;
-        overlapState = MusicState.STOPPED;
     }
 
     public synchronized void resumeMusic() {
@@ -632,7 +624,6 @@ public class AudioController {
 
         safeReleasePlayer(overlapPlayer);
         overlapPlayer = null;
-        overlapState = MusicState.STOPPED;
 
         currentMusicTrackId = null;
     }

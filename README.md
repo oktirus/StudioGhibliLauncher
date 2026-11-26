@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/oktirus/StudioGhibliLauncher/releases/download/v1.1.0/GhibliValley-1.1.0.apk"><strong>Завантажити APK 1.1.0</strong></a>
+  <a href="https://github.com/oktirus/StudioGhibliLauncher/releases/download/v1.1.1/GhibliValley-1.1.1.apk"><strong>Завантажити APK 1.1.1</strong></a>
   · <a href="https://github.com/oktirus/StudioGhibliLauncher/releases/latest">Останній реліз</a>
   · <a href="#встановлення">Встановлення</a>
   · <a href="#кнопка-home">Кнопка Home</a>
@@ -47,7 +47,7 @@
 
 ```powershell
 adb devices -l
-adb -s "TV_DEVICE_ID" install -r ".\GhibliValley-1.1.0.apk"
+adb -s "TV_DEVICE_ID" install -r ".\GhibliValley-1.1.1.apk"
 ```
 
 Параметр `-r` оновлює сумісну версію з тим самим підписом і зберігає всі налаштування та рекорди. [Документація ADB](https://developer.android.com/tools/adb)

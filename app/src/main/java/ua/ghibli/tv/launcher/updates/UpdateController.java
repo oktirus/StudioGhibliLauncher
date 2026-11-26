@@ -83,7 +83,11 @@ public final class UpdateController {
 
     public void checkManually() {
         if (closed || (busy && !silentCheck)) return;
-        if (readyUpdate != null && readyApk != null && readyApk.isFile()) { showReady(); return; }
+        if (readyUpdate != null && readyApk != null && readyApk.isFile()) {
+            if (busy && silentCheck) cancel();
+            showReady();
+            return;
+        }
         check(false);
     }
 
@@ -124,9 +128,14 @@ public final class UpdateController {
                 main.post(() -> {
                     if (!active(token)) return;
                     busy = false;
-                    dismissDialog();
+                    silentCheck = false;
+                    if (!silent) dismissDialog();
                     lastFailureElapsed = -1L;
                     pendingUpdate = update.versionCode > current ? update : null;
+                    if (readyUpdate != null && (pendingUpdate == null || pendingUpdate.versionCode != readyUpdate.versionCode)) {
+                        readyUpdate = null;
+                        readyApk = null;
+                    }
                     android.content.SharedPreferences.Editor preferences =
                             state.edit().putLong(LAST_CHECK, System.currentTimeMillis());
                     if (pendingUpdate == null) {
@@ -243,10 +252,14 @@ public final class UpdateController {
         main.post(() -> {
             if (!active(token)) return;
             busy = false;
-            dismissDialog();
-            readyUpdate = null;
-            readyApk = null;
-            if (silent) lastFailureElapsed = SystemClock.elapsedRealtime();
+            silentCheck = false;
+            if (!silent) dismissDialog();
+            if (silent) {
+                lastFailureElapsed = SystemClock.elapsedRealtime();
+            } else {
+                readyUpdate = null;
+                readyApk = null;
+            }
             String detail = error.getMessage();
             if (!silent) message("Оновлення не виконано", error instanceof java.io.IOException
                     && detail != null && !detail.contains("http") ? detail
@@ -267,6 +280,7 @@ public final class UpdateController {
         main.removeCallbacks(offerPending);
         generation++;
         busy = false;
+        silentCheck = false;
         if (request != null) request.cancel();
         dismissDialog();
     }
